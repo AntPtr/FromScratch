@@ -1,0 +1,6 @@
+@echo off
+
+mkdir ..\..\build
+pushd ..\..\build
+cl -Zi ..\base\code\handmade_win32.cpp
+popd
