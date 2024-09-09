@@ -138,56 +138,18 @@ inline game_controller_input *GetController(game_input *Input, int ControllerInd
   return Result;
 }
 
+
+#include "handmade_intrisic.h"
+#include "handmade_tile.h"
+
 struct game_state
 {
-  int32 PlayerTileMapX;
-  int32 PlayerTileMapY;
-  
-  real32 PlayerX;
-  real32 PlayerY;
-};
-
-struct tile_map
-{    
-  uint32 *Tiles;
+  tile_map_position PlayerP;
 };
 
 struct world
 {
-
-  // TODO: Sparseness
-  int32 TileMapCountX;
-  int32 TileMapCountY; 
-
-  tile_map *TileMaps;
-  int32 CountX;
-  int32 CountY;
-    
-  real32 UpperLeftX;
-  real32 UpperLeftY;
-  real32 TileWidth;
-  real32 TileHeight;
-};
-
-struct canonical_position
-{
-  int32 TileMapX;
-  int32 TileMapY;
-
-  int32 TileX;
-  int32 TileY;
-
-  real32 TileRelX;
-  real32 TileRelY;
-};
-
-struct raw_position
-{
-  int32 TileMapX;
-  int32 TileMapY;
-
-  real32 X;
-  real32 Y;
+  tile_map *TileMap; 
 };
 
 struct game_memory
