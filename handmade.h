@@ -16,6 +16,7 @@ typedef int8_t int8;
 typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
+typedef size_t memory_index;
 
 typedef int32 bool32;
 
@@ -142,14 +143,24 @@ inline game_controller_input *GetController(game_input *Input, int ControllerInd
 #include "handmade_intrisic.h"
 #include "handmade_tile.h"
 
-struct game_state
+struct memory_arena
 {
-  tile_map_position PlayerP;
+  memory_index Size;
+  uint8 *Base;
+  memory_index Used;
 };
 
 struct world
 {
   tile_map *TileMap; 
+};
+
+struct game_state
+{
+  memory_arena WorldArena;
+  world* World;
+  tile_map_position PlayerP;
+  uint32 *PixelPointer;
 };
 
 struct game_memory
@@ -166,6 +177,23 @@ struct game_memory
   debug_platform_read_entire_file *DEBUGPlatformReadEntireFile;
   debug_platform_write_entire_file *DEBUGPlatformWriteEntireFile;
 };
+
+internal void InitializeArena(memory_arena *Arena, memory_index Size, uint8* Base)
+{
+  Arena->Size = Size;
+  Arena->Base = Base;
+  Arena->Used = 0;
+}
+
+#define PushStruct(Arena, type) (type *)PushSize(Arena, sizeof(type))
+#define PushArray(Arena, Count, type) (type *)PushSize(Arena, Count * sizeof(type))
+internal void *PushSize(memory_arena *Arena, memory_index Size)
+{
+  Assert((Arena->Used + Size) <= Arena->Size );
+  void *Result = Arena->Base + Arena->Used;
+  Arena->Used += Size;
+  return Result;
+}
 
 #define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread ,game_memory *Memory, game_input *Input, game_offscreen_buffer* Buffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
