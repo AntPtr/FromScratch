@@ -81,7 +81,7 @@ internal void RenderPlayer(game_offscreen_buffer *Buffer, int PlayerX, int Playe
     }
   }
 }
-
+ 
 void GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffer, int ToneHz)
 {
     int16 *SampleOut = SoundBuffer->Samples;
@@ -169,20 +169,117 @@ struct bitmap_header
   int32 Height;
   uint16 Planes;
   uint16 BitPerPixel;
+  uint32 Compression;
+  uint32 SizeOfBitmap;
+  int32 HorzResolution;
+  int32 VertResolution;
+  uint32 ColorsUser;
+  uint32 ColorsImportant;
+
+  uint32 RedMask;
+  uint32 GreenMask;
+  uint32 BlueMask;
 };
 #pragma pack(pop)
 
-internal uint32 *DEBUGLoadBMP(thread_context *Theard, debug_platform_read_entire_file *ReadEntireFile, char *FileName)
+internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_entire_file *ReadEntireFile, char *FileName)
 {
-  uint32 *Result = 0;
+
+  loaded_bitmap Result = {};
   debug_read_file_result ReadResult = ReadEntireFile(Theard, FileName);
   if(ReadResult.ContentSize > 0)
   {
     bitmap_header *BitMap = (bitmap_header *)ReadResult.Contents;
     uint32 *Pixel = (uint32 *)((uint8 *)ReadResult.Contents  + BitMap->BitmapOffset);
-    Result = Pixel;
+
+    uint32 RedMask = BitMap->RedMask;
+    uint32 GreenMask = BitMap->GreenMask;
+    uint32 BlueMask = BitMap ->BlueMask;
+    uint32 AlphaMask = ~(RedMask | GreenMask | BlueMask);
+
+    bitscan_result RedShift = FindLastSignificantBit(RedMask);
+    bitscan_result GreenShift = FindLastSignificantBit(GreenMask);
+    bitscan_result BlueShift = FindLastSignificantBit(BlueMask);
+    bitscan_result AlphaShift = FindLastSignificantBit(AlphaMask);
+
+
+    uint32 *SourceDest = Pixel;
+    for(int32 Y = 0; Y < BitMap->Width; ++Y)
+    {
+      for(int32 X = 0; X < BitMap->Height; ++X)
+      {
+	uint32 C = *SourceDest;
+	*SourceDest++ = ((((C >> AlphaShift.Index) & 0xFF) << 24) |
+	                (((C >> RedShift.Index) & 0xFF) << 16) |
+			 (((C >> GreenShift.Index) & 0xFF) << 8) |
+			 (((C >> BlueShift.Index) & 0xFF) << 0));
+      }
+    }
+    
+    Result.Pixels = Pixel;
+    Result.Width = BitMap->Width;
+    Result.Height = BitMap->Height;
   }
   return Result;
+}
+
+internal void DrawBitmap(game_offscreen_buffer *Buffer, loaded_bitmap *Bitmap, real32 realX, real32 realY)
+{ 
+  int32 MinX = RoundReal32ToInt32(realX);
+  int32 MaxX = RoundReal32ToInt32(MinX + (real32)Bitmap->Width);
+  int32 MinY = RoundReal32ToInt32(realY);
+  int32 MaxY = RoundReal32ToInt32(MinY + (real32)Bitmap->Height);
+
+  if(MinX < 0)
+  {
+    MinX = 0;
+  }
+  if(MaxX > Buffer->Width)
+  {
+    MaxX = Buffer->Width;
+  }
+  if(MinY < 0)
+  {
+    MinY = 0;
+  }
+  if(MaxY > Buffer->Height)
+  {
+    MaxY = Buffer->Height;
+  }
+ 
+  uint8* DestRow = ((uint8 *)Buffer->Memory + MinX * Buffer->BytesPerPixel + MinY * Buffer->Pitch); 
+  uint32 *SourceRow = Bitmap->Pixels + Bitmap->Width * (Bitmap->Height - 1);
+  
+  for(int32 Y = MinY; Y < MaxY; ++Y)
+  {
+    uint32 *Dest = (uint32 *)DestRow;
+    uint32 *Source = SourceRow;
+    for(int32 X = MinX; X < MaxX; ++X)
+    {
+      //Linear Alpha Blending
+      real32 A  = (real32)((*Source >> 24) & 0xFF) / 255.0f;
+      real32 SR = (real32)((*Source >> 16) & 0xFF);
+      real32 SG = (real32)((*Source >> 8) & 0xFF);
+      real32 SB = (real32)((*Source >> 0) & 0xFF);
+
+      real32 DR = (real32)((*Dest >> 16) & 0xFF);
+      real32 DG = (real32)((*Dest >> 8) & 0xFF);
+      real32 DB = (real32)((*Dest >> 0) & 0xFF);
+
+      real32 R = (1.0f - A)*DR + A*SR;
+      real32 G = (1.0f - A)*DG + A*SG;
+      real32 B = (1.0f - A)*DB + A*SB;
+
+      *Dest = (((uint32)(R + 0.5f) << 16) |
+	       ((uint32)(G + 0.5f)) << 8 |
+	       ((uint32)(B + 0.5f) << 0) );
+      
+      ++Dest;
+      ++Source;
+    }
+    DestRow += Buffer->Pitch;
+    SourceRow -= Bitmap->Width;
+  }
 }
 
 #if defined __cplusplus
@@ -201,7 +298,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->tSine = 0.0f;
     GameState->XOffset = 0;
     GameState->YOffset = 0;*/
-    //Test file missing GameState->PixelPointe = DEBUGLoadBMP(Theard, Memory->DEBUGPlatformReadEntireFile, "test/test_img.bmp");
+    GameState->BackGround = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/test_img.bmp");
     GameState->PlayerP.AbsTileX = 1;
     GameState->PlayerP.AbsTileY = 3;
     GameState->PlayerP.OffsetX = 5.0f;
@@ -468,6 +565,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       
     }
   }
+
+  DrawBitmap(Buffer, &GameState->BackGround, 0, 0);
   
   for(int32 RelRow = -10; RelRow < 10; ++RelRow)
   {
@@ -477,7 +576,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       uint32 Row = GameState->PlayerP.AbsTileY + RelRow;
       uint32 TileID = GetTileValue(TileMap, Column, Row, GameState->PlayerP.AbsTileZ);
       real32 Grey = 0.5f;
-      if(TileID > 0)
+      if(TileID > 1)
       {
         Grey = 0.5f;
         if(TileID == 2)
@@ -504,9 +603,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
   }
 
-  DrawRectangle(Buffer, PlayerLeft, PlayerLeft + PlayerWidth * MetersToPixels, PlayerTop, PlayerTop + PlayerHeight  * MetersToPixels, 1.0f, 1.0f, 0.0f);
-  //DrawRectangle(Buffer, 0.0f, (real32)Buffer->Width, 0.0f, (real32)Buffer->Height, 1.0f, 0.0f, 1.0f);
-  //DrawRectangle(Buffer, 10.0f, 30.0f, 10.0f, 30.f, 1.0f, 1.0f, 0.0f);
+  DrawRectangle(Buffer, PlayerLeft, PlayerLeft + PlayerWidth * MetersToPixels, PlayerTop, PlayerTop + PlayerHeight  * MetersToPixels, 1.0f, 0.0f, 0.0f); 
 
 }
 

@@ -7,6 +7,28 @@
 #define internal static
 #define Pi32 3.14159265359f
 
+#if !defined(COMPILER_MSVC)
+#define COMPILER_MSVC 0
+#endif
+
+#if !defined(COMPILER_LLVM)
+#define COMPILER_LLVM 0
+#endif
+
+#if !COMPILER_MSVC && !COMPILER_LLVM
+#if _MSC_VER
+#undef COMPILER_MSVC
+#define COMPILER_MSVC 1
+#else
+#undef COMPILER_LLVM
+#define COMPILER_LLVM 1
+#endif
+#endif
+
+#if COMPILER_MSVC
+#pragma intrinsic(_BitScanForward)
+#endif
+
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
@@ -155,12 +177,20 @@ struct world
   tile_map *TileMap; 
 };
 
+struct loaded_bitmap
+{
+  int32 Width;
+  int32 Height;
+  uint32 *Pixels;
+};
+
 struct game_state
 {
   memory_arena WorldArena;
   world* World;
   tile_map_position PlayerP;
-  uint32 *PixelPointer;
+
+  loaded_bitmap BackGround;
 };
 
 struct game_memory

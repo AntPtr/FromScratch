@@ -24,6 +24,30 @@ inline int32 FloorReal32ToInt32 (real32 Real32)
   return Result;
 }
 
+struct bitscan_result
+{
+  bool32 Found;
+  uint32 Index;
+};
+
+inline bitscan_result FindLastSignificantBit (uint32 Value)
+{
+  bitscan_result Result = {};
+#if COMPILER_MSVC
+  Result.Found = _BitScanForward((unsigned long *)&Result.Index, Value);
+#else
+  for(uint32 Test = 0; Test < 32; ++Test)
+  {
+    if((1 << Index) & Value)
+    {
+      Result.Index = Test;
+      Result.Found = true;
+      break;
+    }
+  }
+#endif
+  return Result;  
+}
 
 #define HANDMADE_INTRINSIC_H
 #endif
