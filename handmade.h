@@ -26,6 +26,7 @@
 #endif
 
 #if COMPILER_MSVC
+#include <intrin.h>
 #pragma intrinsic(_BitScanForward)
 #endif
 
@@ -184,13 +185,21 @@ struct loaded_bitmap
   uint32 *Pixels;
 };
 
+struct wizard
+{
+  loaded_bitmap Wiz[2];
+};
+
 struct game_state
 {
   memory_arena WorldArena;
   world* World;
   tile_map_position PlayerP;
+  tile_map_position CameraP;
 
   loaded_bitmap BackGround;
+  wizard Wizard;
+  loaded_bitmap *Player;
 };
 
 struct game_memory

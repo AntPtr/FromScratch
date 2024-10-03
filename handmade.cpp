@@ -192,6 +192,8 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
     bitmap_header *BitMap = (bitmap_header *)ReadResult.Contents;
     uint32 *Pixel = (uint32 *)((uint8 *)ReadResult.Contents  + BitMap->BitmapOffset);
 
+    Assert(BitMap->Compression == 3);
+    
     uint32 RedMask = BitMap->RedMask;
     uint32 GreenMask = BitMap->GreenMask;
     uint32 BlueMask = BitMap ->BlueMask;
@@ -223,24 +225,31 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
   return Result;
 }
 
-internal void DrawBitmap(game_offscreen_buffer *Buffer, loaded_bitmap *Bitmap, real32 realX, real32 realY)
-{ 
+internal void DrawBitmap(game_offscreen_buffer *Buffer, loaded_bitmap *Bitmap, real32 realX, real32 realY, int32 AlignX = 0, int32 AlignY = 0)
+{
+  realX -= (real32)AlignX;
+  realY -= (real32)AlignY;
+  
   int32 MinX = RoundReal32ToInt32(realX);
   int32 MaxX = RoundReal32ToInt32(MinX + (real32)Bitmap->Width);
   int32 MinY = RoundReal32ToInt32(realY);
   int32 MaxY = RoundReal32ToInt32(MinY + (real32)Bitmap->Height);
 
+  int32 SourceOffsetX = 0;
   if(MinX < 0)
   {
+    SourceOffsetX = -MinX;
     MinX = 0;
   }
   if(MaxX > Buffer->Width)
   {
     MaxX = Buffer->Width;
   }
+  int32 SourceOffsetY = 0;
   if(MinY < 0)
   {
-    MinY = 0;
+    SourceOffsetY = -MinY;
+    MinY = 0; 
   }
   if(MaxY > Buffer->Height)
   {
@@ -249,6 +258,7 @@ internal void DrawBitmap(game_offscreen_buffer *Buffer, loaded_bitmap *Bitmap, r
  
   uint8* DestRow = ((uint8 *)Buffer->Memory + MinX * Buffer->BytesPerPixel + MinY * Buffer->Pitch); 
   uint32 *SourceRow = Bitmap->Pixels + Bitmap->Width * (Bitmap->Height - 1);
+  SourceRow += -Bitmap->Width * SourceOffsetY + SourceOffsetX;
   
   for(int32 Y = MinY; Y < MaxY; ++Y)
   {
@@ -299,10 +309,16 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->XOffset = 0;
     GameState->YOffset = 0;*/
     GameState->BackGround = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/test_img.bmp");
-    GameState->PlayerP.AbsTileX = 1;
-    GameState->PlayerP.AbsTileY = 3;
+    GameState->Wizard.Wiz[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage1.bmp");
+    GameState->Wizard.Wiz[1] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage2.bmp");
+    GameState->Player = &GameState->Wizard.Wiz[0];
+    GameState->PlayerP.AbsTileX = 4;
+    GameState->PlayerP.AbsTileY = 2;
     GameState->PlayerP.OffsetX = 5.0f;
     GameState->PlayerP.OffsetY = 5.0f;
+
+    GameState->CameraP.AbsTileX = 17/2;
+    GameState->CameraP.AbsTileY = 9/2;
 
     InitializeArena(&GameState->WorldArena, Memory->PermanentStorageSize - sizeof(game_state), (uint8 *)Memory->PermanentStorage + sizeof(game_state));
     GameState->World = PushStruct(&GameState->WorldArena, world);
@@ -491,9 +507,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   real32 ScreenCenterX = (real32)Buffer->Width * 0.5f;
   real32 PlayerHeight = 1.4f;
   real32 PlayerWidth = 0.75f * PlayerHeight;
-  real32 PlayerLeft = ScreenCenterX  - (0.5f * PlayerWidth * MetersToPixels);
-  real32 PlayerTop = ScreenCenterY  - PlayerHeight * MetersToPixels;
-  
+
   for(int ControllerIndex = 0; ControllerIndex < ArrayCount(Input->Controllers); ++ControllerIndex)
   {
     game_controller_input *Controller = GetController(Input, ControllerIndex);
@@ -512,10 +526,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       if(Controller->MoveLeft.EndedDown)
       {
 	dPlayerX = -1.0f;
+	GameState->Player = &GameState->Wizard.Wiz[1];
       }
       if(Controller->MoveRight.EndedDown)
       {
 	dPlayerX = 1.0f;
+	GameState->Player = &GameState->Wizard.Wiz[0];
       }
       if(Controller->MoveUp.EndedDown)
       {
@@ -560,21 +576,40 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    --NewPlayerP.AbsTileZ;
 	  }
 	}
-	GameState->PlayerP = NewPlayerP;
+	GameState->PlayerP = NewPlayerP;	
       }
-      
+      GameState->CameraP.AbsTileZ = GameState->PlayerP.AbsTileZ;
+      tile_map_difference Diff = Subtract(TileMap, &GameState->PlayerP, &GameState->CameraP);
+      if(Diff.dX > (9.0f * TileMap->TileSideInMeter))
+      {
+	GameState->CameraP.AbsTileX += 17; 
+      }
+      if(Diff.dX < -(9.0f * TileMap->TileSideInMeter))
+      {
+	GameState->CameraP.AbsTileX -= 17; 
+      }
+      if(Diff.dY > (5.0f * TileMap->TileSideInMeter))
+      {
+	GameState->CameraP.AbsTileY += 9; 
+      }
+      if(Diff.dY < -(5.0f * TileMap->TileSideInMeter))
+      {
+	GameState->CameraP.AbsTileY -= 9; 
+      }
+
     }
   }
 
   DrawBitmap(Buffer, &GameState->BackGround, 0, 0);
+
   
   for(int32 RelRow = -10; RelRow < 10; ++RelRow)
   {
     for(int32 RelColumn = -20; RelColumn < 20; ++RelColumn)
     {
-      uint32 Column = GameState->PlayerP.AbsTileX + RelColumn;
-      uint32 Row = GameState->PlayerP.AbsTileY + RelRow;
-      uint32 TileID = GetTileValue(TileMap, Column, Row, GameState->PlayerP.AbsTileZ);
+      uint32 Column = GameState->CameraP.AbsTileX + RelColumn;
+      uint32 Row = GameState->CameraP.AbsTileY + RelRow;
+      uint32 TileID = GetTileValue(TileMap, Column, Row, GameState->CameraP.AbsTileZ);
       real32 Grey = 0.5f;
       if(TileID > 1)
       {
@@ -587,8 +622,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	{
 	  Grey = 0.25f;
 	}
-        real32 CenX = ScreenCenterX - MetersToPixels * GameState->PlayerP.OffsetX + ((real32)(TileSideInPixel) * RelColumn);
-        real32 CenY = ScreenCenterY + MetersToPixels * GameState->PlayerP.OffsetY - ((real32)(TileSideInPixel) * RelRow);
+        real32 CenX = ScreenCenterX - MetersToPixels * GameState->CameraP.OffsetX + ((real32)(TileSideInPixel) * RelColumn);
+        real32 CenY = ScreenCenterY + MetersToPixels * GameState->CameraP.OffsetY - ((real32)(TileSideInPixel) * RelRow);
         real32 MinX = CenX - 0.5f * TileSideInPixel;
         real32 MinY = CenY - 0.5f * TileSideInPixel;
         real32 MaxX = CenX + 0.5f * TileSideInPixel;
@@ -603,8 +638,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
   }
 
-  DrawRectangle(Buffer, PlayerLeft, PlayerLeft + PlayerWidth * MetersToPixels, PlayerTop, PlayerTop + PlayerHeight  * MetersToPixels, 1.0f, 0.0f, 0.0f); 
+  tile_map_difference Diff = Subtract(TileMap, &GameState->PlayerP, &GameState->CameraP);
+  real32 PlayerGroundX = ScreenCenterX + MetersToPixels*Diff.dX;
+  real32 PlayerGroundY = ScreenCenterY - MetersToPixels*Diff.dY;
 
+  real32 PlayerLeft = PlayerGroundX - (0.5f * PlayerWidth * MetersToPixels);
+  real32 PlayerTop = PlayerGroundY - PlayerHeight * MetersToPixels;
+
+  //DrawRectangle(Buffer, PlayerLeft, PlayerLeft + PlayerWidth * MetersToPixels, PlayerTop, PlayerTop + PlayerHeight  * MetersToPixels, 1.0f, 0.0f, 0.0f);
+  DrawBitmap(Buffer, GameState->Player, PlayerLeft, PlayerTop, 50, 90);
 }
 
 

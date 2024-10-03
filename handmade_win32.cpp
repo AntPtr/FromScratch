@@ -19,6 +19,36 @@ global_variable bool32 Running;
 global_variable bool32 Sound;
 global_variable bool32 GlobalPause;
 global_variable int64 GlobalPerfCountFrequency;
+global_variable bool32 DEBUGLoadCursor;
+global_variable WINDOWPLACEMENT GLOBALWindowPosition = {sizeof(GLOBALWindowPosition)};
+
+
+//Raymond Chen fullscreen method
+void FullScreenToggle(HWND Window)
+{
+  DWORD Style = GetWindowLong(Window, GWL_STYLE);
+  if (Style & WS_OVERLAPPEDWINDOW) {
+    MONITORINFO MonitorInfo = { sizeof(MonitorInfo) };
+    if (GetWindowPlacement(Window, &GLOBALWindowPosition) &&
+        GetMonitorInfo(MonitorFromWindow(Window, MONITOR_DEFAULTTOPRIMARY), &MonitorInfo))
+    {
+      SetWindowLong(Window, GWL_STYLE, Style & ~WS_OVERLAPPEDWINDOW);
+      SetWindowPos(Window, HWND_TOP,
+                   MonitorInfo.rcMonitor.left, MonitorInfo.rcMonitor.top,
+                   MonitorInfo.rcMonitor.right - MonitorInfo.rcMonitor.left,
+                   MonitorInfo.rcMonitor.bottom - MonitorInfo.rcMonitor.top,
+                   SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+  }
+  else
+  {
+    SetWindowLong(Window, GWL_STYLE, Style | WS_OVERLAPPEDWINDOW);
+    SetWindowPlacement(Window, &GLOBALWindowPosition);
+    SetWindowPos(Window, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+  }
+}
 
 internal void CatStrings(size_t SourceACount, char *SourceA, size_t SourceBCount, char *SourceB, size_t DestCount, char *Dest)
 {
@@ -444,20 +474,33 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer ,int Width, i
 
 internal void Win32DisplayBufferWindow(win32_offscreen_buffer *Buffer , int WindowWidth, int WindowHeigth, HDC DeviceContex, int  X, int  Y, int Width, int Heigth)
 {
-  int OffsetX = 10;
-  int OffsetY = 10;
 
-
-  PatBlt(DeviceContex, 0, 0, WindowWidth, OffsetY, BLACKNESS);                             // top
-  PatBlt(DeviceContex, 0, OffsetY + Buffer->Height, WindowWidth, WindowHeigth, BLACKNESS); // bottom
-  PatBlt(DeviceContex, 0, 0, OffsetX, WindowHeigth, BLACKNESS);                            // left
-  PatBlt(DeviceContex, OffsetX + Buffer->Width, 0, WindowWidth, WindowHeigth, BLACKNESS);                           
-
-  StretchDIBits(DeviceContex,
-		OffsetX, OffsetY, Buffer->Width, Buffer->Height,
+  if(WindowHeigth >= Buffer->Height*1.5 && WindowWidth >= Buffer->Width*1.5)
+  {
+     StretchDIBits(DeviceContex,
+		0, 0, WindowWidth, WindowHeigth,
 		0, 0, Buffer->Width, Buffer->Height,
 		Buffer->Memory, &Buffer->BitMapInfo,
-		DIB_RGB_COLORS, SRCCOPY); 
+		DIB_RGB_COLORS, SRCCOPY);  
+  }
+
+  else
+  {
+    int OffsetX = 10;
+    int OffsetY = 10;
+    
+    
+    PatBlt(DeviceContex, 0, 0, WindowWidth, OffsetY, BLACKNESS);                             // top
+    PatBlt(DeviceContex, 0, OffsetY + Buffer->Height, WindowWidth, WindowHeigth, BLACKNESS); // bottom
+    PatBlt(DeviceContex, 0, 0, OffsetX, WindowHeigth, BLACKNESS);                            // left
+    PatBlt(DeviceContex, OffsetX + Buffer->Width, 0, WindowWidth, WindowHeigth, BLACKNESS);                           
+    
+    StretchDIBits(DeviceContex,
+    		OffsetX, OffsetY, Buffer->Width, Buffer->Height,
+    		0, 0, Buffer->Width, Buffer->Height,
+    		Buffer->Memory, &Buffer->BitMapInfo,
+    		DIB_RGB_COLORS, SRCCOPY);
+  }
 }
 
 internal void Win32ProcessXInputButtons(game_button_state *OldState, game_button_state *NewState, DWORD ButtonBit, DWORD ButtonState)
@@ -575,11 +618,18 @@ internal void Win32MessageLoop(game_controller_input *KeyBoardController, win32_
            {
 	     Win32ProcessKeyBoardButtons(&KeyBoardController->Back, IsDown);	     
            }
-           bool32 AltKeyWasDown = (Message.lParam & (1 << 29));
-           if((VKCode == VK_F4) && AltKeyWasDown)
-           {
-	     Running = false;
-           }
+	   if(IsDown)
+	   {
+             bool32 AltKeyWasDown = (Message.lParam & (1 << 29));
+             if((VKCode == VK_F4) && AltKeyWasDown)
+             {
+	       Running = false;
+             }
+	     if((VKCode == VK_RETURN) && AltKeyWasDown)
+             {
+	       FullScreenToggle(Message.hwnd);
+             }
+	   }
 	 }
        }break;
      }
@@ -626,28 +676,33 @@ inline FILETIME Win32GetLastWriteTime(char *Filename)
     return (LastWriteTime);
 }
 
-internal win32_game_code Win32LoadGameCode(char *SourceDLLName, char *TempDLLName)
+internal win32_game_code Win32LoadGameCode(char *SourceDLLName, char *TempDLLName, char *LockFileName)
 {
-    win32_game_code Result = {};
+  win32_game_code Result = {};
+  WIN32_FILE_ATTRIBUTE_DATA Ignored;
+  
+  if(!GetFileAttributesExA(LockFileName, GetFileExInfoStandard, &Ignored))
+  {
     Result.DLLLastWriteTime = Win32GetLastWriteTime(SourceDLLName);
-
+    
     CopyFile(SourceDLLName, TempDLLName, FALSE);
     Result.GameCodeDLL = LoadLibraryA(TempDLLName);
     if(Result.GameCodeDLL)
     {
-        Result.UpdateAndRender = 
-            (game_update_and_render *)GetProcAddress(Result.GameCodeDLL, "GameUpdateAndRender");
-        Result.GetSoundSamples = 
-            (game_get_sound_samples *)GetProcAddress(Result.GameCodeDLL, "GameGetSoundSamples");
-        Result.IsValid = Result.GetSoundSamples && Result.UpdateAndRender;
+      Result.UpdateAndRender = 
+        (game_update_and_render *)GetProcAddress(Result.GameCodeDLL, "GameUpdateAndRender");
+      Result.GetSoundSamples = 
+        (game_get_sound_samples *)GetProcAddress(Result.GameCodeDLL, "GameGetSoundSamples");
+      Result.IsValid = Result.GetSoundSamples && Result.UpdateAndRender;
     }
-    if (!Result.IsValid)
-    {
-        Result.UpdateAndRender = 0;
-        Result.GetSoundSamples = 0;
-    }
+  }
+  if (!Result.IsValid)
+  {
+    Result.UpdateAndRender = 0;
+    Result.GetSoundSamples = 0;
+  }
 
-    return(Result);
+  return(Result);
 }
 
 internal void Win32DebugDrawVertical(win32_offscreen_buffer *Backbuffer, int X, int Top, int Bottom, uint32 Color)
@@ -728,6 +783,8 @@ internal void  Win32DebugSyncDisplay(win32_offscreen_buffer *Backbuffer, int Mar
 }
 #endif
 
+
+
 LRESULT MainWindowCallback(
   HWND    Windows,
   UINT    Message,
@@ -752,6 +809,18 @@ LRESULT MainWindowCallback(
     {
       Running = false;
       OutputDebugStringA("WM_CLOSE");
+    } break;
+
+    case WM_SETCURSOR:
+    {
+      if(DEBUGLoadCursor)
+      {
+	Result = DefWindowProcA(Windows, Message, WParam, LParam);
+      }
+      else
+      {
+	SetCursor(0);
+      }
     } break;
     
     case WM_ACTIVATEAPP:
@@ -792,6 +861,7 @@ LRESULT MainWindowCallback(
   return Result;
 }
 
+
 int WINAPI wWinMain(HINSTANCE Instance,
 		    HINSTANCE PrevInstance,
 		    PWSTR CommandLine,
@@ -807,6 +877,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
   WindowClass.style = CS_HREDRAW | CS_VREDRAW;
   WindowClass.lpfnWndProc = MainWindowCallback;
   WindowClass.hInstance = Instance;
+  WindowClass.hCursor = LoadCursor(0, IDC_ARROW);
   //WindowClass.hIcon;
   WindowClass.lpszClassName = "Finestra fatta da zero";
 
@@ -819,12 +890,21 @@ int WINAPI wWinMain(HINSTANCE Instance,
   LARGE_INTEGER FlipWallClock = Win32GetClock();
   Win32GetEXEFilename(&Win32State);
 
+#if H_INTERNAL
+  DEBUGLoadCursor = true;
+#endif
+
   char SourceGameCodeDLLFullPath[WIN32_STATE_FILENAME_COUNT];
   Win32BuildEXEPathFilename(&Win32State, "handmade.dll", 
 			    sizeof(SourceGameCodeDLLFullPath), SourceGameCodeDLLFullPath);
+  
   char TempGameCodeDLLFullPath[WIN32_STATE_FILENAME_COUNT];
   Win32BuildEXEPathFilename(&Win32State, "handmade_temp.dll", 
 			    sizeof(TempGameCodeDLLFullPath), TempGameCodeDLLFullPath);
+  
+  char LockFullPath[WIN32_STATE_FILENAME_COUNT];
+  Win32BuildEXEPathFilename(&Win32State, "lock.tmp", 
+			    sizeof(LockFullPath), LockFullPath);
   
   if(RegisterClassA(&WindowClass))
   {
@@ -920,7 +1000,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 
 	int DebugTimeMarkerIndex = 0;
 	win32_debug_time_marker DebugTimeMarkers[30] = {};
-	win32_game_code Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, TempGameCodeDLLFullPath);
+	win32_game_code Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, TempGameCodeDLLFullPath, LockFullPath);
 	
         while(Running)
         {
@@ -929,7 +1009,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	  {
 	    Game.DLLLastWriteTime = NewDLLWriteTime;
 	    Win32UnloadGameCode(&Game);
-	    Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, TempGameCodeDLLFullPath);
+	    Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, TempGameCodeDLLFullPath, LockFullPath);
 	  }
 	  NewInput->dtForFrame = TargetSecPFrame;
 	  game_controller_input *NewKeyBoardController = GetController(NewInput, 0);
@@ -1002,6 +1082,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	        if(Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
 	        {
 	          NewController->AvarageStickY = 1.0f;
+	          NewController->IsAnalog = false;
 	          NewController->IsAnalog = false;
 	        }
 	        
@@ -1182,6 +1263,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    Win32DebugSyncDisplay(&GlobalBackBuffer, ArrayCount(DebugTimeMarkers), DebugTimeMarkers, DebugTimeMarkerIndex - 1, &SoundOutput, TargetSecPFrame);
 #endif
 	    HDC DeviceContex = GetDC(Window);
+	   
             Win32DisplayBufferWindow(&GlobalBackBuffer, Dimension.Width, Dimension.Heigth, DeviceContex, 0, 0, Dimension.Width, Dimension.Heigth);
 	    ReleaseDC(Window, DeviceContex);
 
