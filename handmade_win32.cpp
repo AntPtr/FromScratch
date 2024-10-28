@@ -612,11 +612,11 @@ internal void Win32MessageLoop(game_controller_input *KeyBoardController, win32_
            }
            else if(VKCode == VK_ESCAPE)
            {
-	     Win32ProcessKeyBoardButtons(&KeyBoardController->Start, IsDown);
+	     Win32ProcessKeyBoardButtons(&KeyBoardController->Back, IsDown);
            }
            else if(VKCode == VK_SPACE)
            {
-	     Win32ProcessKeyBoardButtons(&KeyBoardController->Back, IsDown);	     
+	     Win32ProcessKeyBoardButtons(&KeyBoardController->Start, IsDown);	     
            }
 	   if(IsDown)
 	   {

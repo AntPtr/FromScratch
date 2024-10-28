@@ -7,16 +7,16 @@ inline void ReCanonicalizeCoord(tile_map *TileMap, uint32 *Tile, real32 *TileRel
 
   *TileRel -= Offset * TileMap->TileSideInMeter;
 
-  Assert(*TileRel >= -0.5f * TileMap->TileSideInMeter);
-  Assert(*TileRel < 0.5f * TileMap->TileSideInMeter);
+  Assert(*TileRel > -0.5001f * TileMap->TileSideInMeter);
+  Assert(*TileRel < 0.5001f * TileMap->TileSideInMeter);
   
 }
 
 inline tile_map_position ReCanonicalizePosition(tile_map *Tile_Map, tile_map_position Pos)
 {
   tile_map_position Result = Pos;
-  ReCanonicalizeCoord(Tile_Map, &Result.AbsTileX, &Result.OffsetX);
-  ReCanonicalizeCoord(Tile_Map, &Result.AbsTileY, &Result.OffsetY);
+  ReCanonicalizeCoord(Tile_Map, &Result.AbsTileX, &Result.Offset_.X);
+  ReCanonicalizeCoord(Tile_Map, &Result.AbsTileY, &Result.Offset_.Y);
 
   return Result;
 }
@@ -105,12 +105,20 @@ inline uint32 GetTileValue(tile_map *TileMap, tile_map_position Pos)
   return TileChunkValue;
 }
 
+inline bool32 IsTileValueEmpty(uint32 TileValue)
+{
+  bool32 Empty = (TileValue == 1) ||
+                 (TileValue == 3) ||
+                 (TileValue == 4);
+   
+  return (Empty);
+}
+
 inline bool32 IsTileMapPointEmpty(tile_map *Tile_Map, tile_map_position CanPos)
 {
   uint32 TileChunkValue = GetTileValue(Tile_Map, CanPos.AbsTileX, CanPos.AbsTileY, CanPos.AbsTileZ);
-  bool32 Empty = (TileChunkValue == 1) ||
-                 (TileChunkValue == 3) ||
-                 (TileChunkValue == 4);
+  bool32 Empty = IsTileValueEmpty(TileChunkValue);
+
    
   return (Empty);
 }
@@ -146,13 +154,29 @@ inline tile_map_difference Subtract(tile_map *TileMap, tile_map_position *A, til
 {
   tile_map_difference Result;
 
-  real32 dTileX = (real32)(A->AbsTileX) - (real32)(B->AbsTileX);
-  real32 dTileY = (real32)(A->AbsTileY) - (real32)(B->AbsTileY);
+  v2 dTileXY = {(real32)(A->AbsTileX) - (real32)(B->AbsTileX), (real32)(A->AbsTileY) - (real32)(B->AbsTileY)};
+  
   real32 dTileZ = (real32)(A->AbsTileZ) - (real32)(B->AbsTileZ);
 
-  Result.dX = TileMap->TileSideInMeter *dTileX + (A->OffsetX - B->OffsetX);
-  Result.dY = TileMap->TileSideInMeter *dTileY + (A->OffsetY - B->OffsetY);
+  Result.dXY = TileMap->TileSideInMeter *dTileXY + (A->Offset_ - B->Offset_);
   Result.dZ = TileMap->TileSideInMeter *dTileZ;
 
   return Result;
+}
+
+inline tile_map_position CenteredTilePoint(uint32 AbsTileX, uint32 AbsTileY, uint32 AbsTileZ)
+{
+  tile_map_position Result = {};
+  Result.AbsTileX = AbsTileX;
+  Result.AbsTileY = AbsTileY;
+  Result.AbsTileZ = AbsTileZ;
+
+  return Result;
+}
+
+inline tile_map_position Offset(tile_map *TileMap, tile_map_position P, v2 Offset)
+{
+  P.Offset_ += Offset;
+  P = ReCanonicalizePosition(TileMap, P);
+  return P;
 }

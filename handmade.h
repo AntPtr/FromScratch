@@ -2,10 +2,14 @@
 #include <math.h>
 #include <stdint.h>
 
+
 #define local_persist static
 #define global_variable static
 #define internal static
 #define Pi32 3.14159265359f
+#define Minimum(A, B) ((A < B) ? A : B)
+#define Maximum(A, B) ((A > B) ? A : B)
+
 
 #if !defined(COMPILER_MSVC)
 #define COMPILER_MSVC 0
@@ -45,6 +49,7 @@ typedef int32 bool32;
 
 typedef float real32;
 typedef double real64;
+#include "handmade_math.h"
 
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
 
@@ -190,16 +195,28 @@ struct wizard
   loaded_bitmap Wiz[2];
 };
 
+struct entity
+{
+  v2 dvP;
+  tile_map_position P;
+  bool32 Exists;
+  uint32 WizFacingDirection;
+  real32 Height;
+  real32 Width;
+};
+
 struct game_state
 {
   memory_arena WorldArena;
   world* World;
-  tile_map_position PlayerP;
   tile_map_position CameraP;
-
+  uint32 EntityCount;
+  uint32 PlayerCount;
+  uint32 PlayerIndexForControllers[ArrayCount(((game_input *)0)->Controllers)];
+  entity Entities[256];
+  uint32 CameraFollowEntityIndex;
   loaded_bitmap BackGround;
   wizard Wizard;
-  loaded_bitmap *Player;
 };
 
 struct game_memory
