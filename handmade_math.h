@@ -64,7 +64,7 @@ v2 &v2::operator+=(v2 A)
   return *this;
 }
 
-inline real32 Square (real32 X)
+inline real32 Square(real32 X)
 {
   real32 Result;
   Result = X*X;
