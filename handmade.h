@@ -58,6 +58,7 @@ typedef double real64;
 #else
 #define Assert(Expr)
 #endif
+#define InvalidCodePath Assert(!"InvalidCodePath")
 
 struct thread_context
 {
@@ -195,14 +196,43 @@ struct wizard
   loaded_bitmap Wiz[2];
 };
 
-struct entity
+
+struct high_entity
 {
   v2 dvP;
-  tile_map_position P;
-  bool32 Exists;
+  v2 P;
+  uint32 AbsTileZ;
   uint32 WizFacingDirection;
+
+  real32 Z;
+  real32 dvZ;
+  uint32 LowEntityIndex;
+};
+
+enum entity_type
+{
+  EntityType_Null,
+  EntityType_Hero,
+  EntityType_Wall
+};
+
+struct low_entity
+{
+  entity_type Type;
+  tile_map_position P;
   real32 Height;
   real32 Width;
+  //This is for ladders
+  bool32 Collides;
+  int32 dAbsTileZ;
+  uint32 HighEntityIndex;
+};
+
+struct entity
+{
+  uint32 LowIndex;
+  low_entity *Low;
+  high_entity *High;
 };
 
 struct game_state
@@ -210,10 +240,16 @@ struct game_state
   memory_arena WorldArena;
   world* World;
   tile_map_position CameraP;
-  uint32 EntityCount;
+
   uint32 PlayerCount;
   uint32 PlayerIndexForControllers[ArrayCount(((game_input *)0)->Controllers)];
-  entity Entities[256];
+
+  uint32 HighEntityCount;
+  high_entity HighEntities_[256];
+
+  uint32 LowEntityCount;
+  low_entity LowEntities[4096];
+  
   uint32 CameraFollowEntityIndex;
   loaded_bitmap BackGround;
   wizard Wizard;

@@ -91,5 +91,51 @@ inline int32 SignOf(int32 Value)
   Result = (Value >= 0) ? 1 : -1;
   return Result;
 }
+
+struct rectangle2
+{
+  v2 Min;
+  v2 Max;
+};
+
+inline rectangle2 RectMinMax(v2 Min, v2 Max)
+{
+  rectangle2 Rectangle = {};
+  Rectangle.Min = Min;
+  Rectangle.Max = Max;
+  return Rectangle;
+}
+
+inline rectangle2 RectCenHalfDim(v2 Center, v2 HalfDim)
+{
+  rectangle2 Rectangle = {};
+  Rectangle.Min = Center - HalfDim;
+  Rectangle.Max = Center + HalfDim;
+  return Rectangle;
+}
+
+inline rectangle2 RectMinDim(v2 Min, v2 Dim)
+{
+  rectangle2 Rectangle = {};
+  Rectangle.Min = Min;
+  Rectangle.Max = Min + Dim;
+  return Rectangle;
+}
+
+inline rectangle2 RectCentDim(v2 Center, v2 Dim)
+{
+  rectangle2 Rectangle = RectCenHalfDim(Center, 0.5*Dim);
+  
+  return Rectangle;
+}
+
+inline bool32 IsInRectangle(rectangle2 Rectangle, v2 Test)
+{
+  bool32 Result = ((Test.X >= Rectangle.Min.X) &&
+		   (Test.Y >= Rectangle.Min.Y) &&
+		   (Test.X < Rectangle.Max.X) &&
+		   (Test.Y < Rectangle.Max.Y));
+  return Result;
+}
 #define HANDMADE_MATH_H
 #endif
