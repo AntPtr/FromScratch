@@ -352,13 +352,12 @@ inline void OffsetAndCheckFrequencyByArea(game_state *GameState, v2 Offset, rect
 
 }
 
-internal uint32 AddPlayers(game_state *GameState)
+internal uint32 AddPlayers(game_state *GameState, uint32 Offset = 0)
 {
   uint32 EntityIndex = AddLowEntity(GameState, EntityType_Hero);
   low_entity *EntityLow = GetLowEntity(GameState, EntityIndex);
 
-  EntityLow->P.AbsTileX = 2;
-  EntityLow->P.AbsTileY = 3;
+  EntityLow->P = GameState->CameraP;
   EntityLow->P.Offset_.X = 0.0f;
   EntityLow->P.Offset_.Y = 0.0f;
   EntityLow->Width =  GameState->World->TileMap->TileSideInMeter * 0.85f;
@@ -600,23 +599,21 @@ internal void SetCamera(game_state *GameState, tile_map_position NewCameraP)
 
   OffsetAndCheckFrequencyByArea(GameState, EntityOffsetForFrame, CameraBounds);
   
-  uint32 MinTileX = NewCameraP.AbsTileX - TileSpanX/2;
-  uint32 MinTileY = NewCameraP.AbsTileY + TileSpanY/2;
-  uint32 MaxTileX = NewCameraP.AbsTileX - TileSpanX/2;
-  uint32 MaxTileY = NewCameraP.AbsTileX + TileSpanX/2;
+  int32 MinTileX = NewCameraP.AbsTileX - TileSpanX/2;
+  int32 MaxTileX = NewCameraP.AbsTileX + TileSpanX/2;
+  int32 MinTileY = NewCameraP.AbsTileY - TileSpanY/2;
+  int32 MaxTileY = NewCameraP.AbsTileX + TileSpanY/2;
   
   for(uint32 EntityIndex = 1; EntityIndex < GameState->LowEntityCount; ++EntityIndex)
   {
     low_entity *Low = GameState->LowEntities + EntityIndex;
     if(Low->HighEntityIndex == 0)
     {
-#if 0 
       if((Low->P.AbsTileZ == NewCameraP.AbsTileZ)&&
          (Low->P.AbsTileX >= MinTileX)&&
          (Low->P.AbsTileX <= MaxTileX)&&
-         (Low->P.AbsTileY <= MinTileY)&&
-         (Low->P.AbsTileY >= MinTileY))
-#endif
+         (Low->P.AbsTileY >= MinTileY)&&
+         (Low->P.AbsTileY <= MaxTileY))
       {
         MakeEntityHighFrequency(GameState, EntityIndex);
       }
@@ -659,29 +656,18 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->HighEntityCount = 1;
 
     tile_map *TileMap = World->TileMap;
-    
-    TileMap->TileChunkCountX = 128;
-    TileMap->TileChunkCountY = 128;
-    TileMap->TileChunkCountZ = 2;
-    TileMap->TileSideInMeter = 1.40f;
-    TileMap->TileChunks = PushArray(&GameState->WorldArena,
-				    TileMap->TileChunkCountX * TileMap->TileChunkCountY * TileMap->TileChunkCountZ,
-				    tile_chunk);
-
-    TileMap->ChunkShift = 4;
-    TileMap->ChunkMask = (1 << TileMap->ChunkShift) - 1;
-    TileMap->ChunkDim = (1 << TileMap->ChunkShift);
+    InitializeTileMap(TileMap, 1.4f);
     
 
       
     uint32 TilesPerWidth = 17;
     uint32 TilesPerHeight = 9;
-#if 0
-    uint32 ScreenY = INT32_MAX / 2;
-    uint32 ScreenX = INT32_MAX / 2;
-#endif
-    uint32 ScreenY = 0;
-    uint32 ScreenX = 0;
+    uint32 ScreenBaseX = 0;
+    uint32 ScreenBaseY = 0;
+    uint32 ScreenBaseZ = 0;
+    uint32 ScreenX = ScreenBaseX;
+    uint32 ScreenY = ScreenBaseY;
+    uint32 AbsTileZ = ScreenBaseZ;
     uint32 RandomNumberIndex = 0;
     bool32 TopDoor = false;
     bool32 RigthDoor = false;
@@ -689,7 +675,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     bool32 LeftDoor = false;
     bool32 UpDoor = false;
     bool32 DownDoor = false;
-    uint32 AbsTileZ = 0;
 
     for(uint32 ScreenIndex = 0; ScreenIndex < 2; ++ScreenIndex)
     {
@@ -708,7 +693,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       if(RandomChoice == 2)
       {
 	CreatedZDoor = true;
-	if(AbsTileZ == 0)
+	if(AbsTileZ == ScreenBaseZ)
 	{
 	  UpDoor = true;
 	}
@@ -812,13 +797,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       RigthDoor = false;
       if(RandomChoice == 2)
       {
-	if(AbsTileZ == 0)
+	if(AbsTileZ == ScreenBaseZ)
 	{
-	  AbsTileZ = 1;
+	  AbsTileZ = ScreenBaseZ + 1;
 	}
 	else
 	{
-	  AbsTileZ = 0;
+	  AbsTileZ = ScreenBaseZ;
 	}
       }
       else if(RandomChoice == 1)
@@ -831,8 +816,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       }
     }
     tile_map_position NewCameraP = {};
-    NewCameraP.AbsTileX = 17/2;
-    NewCameraP.AbsTileY = 9/2;
+    NewCameraP.AbsTileX = ScreenBaseX*TilesPerWidth + 17/2;
+    NewCameraP.AbsTileY = ScreenBaseY*TilesPerHeight + 9/2;
+    NewCameraP.AbsTileZ = ScreenBaseZ;
+
     SetCamera(GameState, NewCameraP); 
     Memory->IsInitialized = true;
   }
@@ -859,7 +846,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       if(Controller->Start.EndedDown)
       {
-	uint32 EntityIndex = AddPlayers(GameState);	
+	uint32 EntityIndex = AddPlayers(GameState);
+
 	GameState->PlayerIndexForControllers[ControllerIndex] = EntityIndex;
       }
     }
