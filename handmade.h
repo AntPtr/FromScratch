@@ -170,7 +170,7 @@ inline game_controller_input *GetController(game_input *Input, int ControllerInd
 
 
 #include "handmade_intrisic.h"
-#include "handmade_tile.h"
+#include "handmade_world.h"
 
 struct memory_arena
 {
@@ -179,10 +179,10 @@ struct memory_arena
   memory_index Used;
 };
 
-struct world
+/*struct world
 {
   tile_map *TileMap; 
-};
+  };*/
 
 struct loaded_bitmap
 {
@@ -201,7 +201,7 @@ struct high_entity
 {
   v2 dvP;
   v2 P;
-  uint32 AbsTileZ;
+  uint32 ChunkZ;
   uint32 WizFacingDirection;
 
   real32 Z;
@@ -219,9 +219,11 @@ enum entity_type
 struct low_entity
 {
   entity_type Type;
-  tile_map_position P;
+  
+  world_position P;
   real32 Height;
   real32 Width;
+  
   //This is for ladders
   bool32 Collides;
   int32 dAbsTileZ;
@@ -239,7 +241,7 @@ struct game_state
 {
   memory_arena WorldArena;
   world* World;
-  tile_map_position CameraP;
+  world_position CameraP;
 
   uint32 PlayerCount;
   uint32 PlayerIndexForControllers[ArrayCount(((game_input *)0)->Controllers)];
@@ -252,6 +254,7 @@ struct game_state
   
   uint32 CameraFollowEntityIndex;
   loaded_bitmap BackGround;
+  loaded_bitmap Wall;
   wizard Wizard;
 };
 

@@ -137,5 +137,24 @@ inline bool32 IsInRectangle(rectangle2 Rectangle, v2 Test)
 		   (Test.Y < Rectangle.Max.Y));
   return Result;
 }
+
+inline v2 GetMaxCorner(rectangle2 Rect)
+{
+  v2 Result = Rect.Max;
+  return Result;
+}
+
+inline v2 GetMinCorner(rectangle2 Rect)
+{
+  v2 Result = Rect.Min;
+  return Result;
+}
+
+inline v2 GetCenter(rectangle2 Rect)
+{
+  v2 Result = 0.5f*(Rect.Min + Rect.Max);
+  return Result;
+}
+
 #define HANDMADE_MATH_H
 #endif
