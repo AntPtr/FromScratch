@@ -213,7 +213,16 @@ enum entity_type
 {
   EntityType_Null,
   EntityType_Hero,
-  EntityType_Wall
+  EntityType_Wall,
+  EntityType_Familiar,
+  EntityType_Monster,
+};
+
+#define HIT_POINT_SUB_COUNT 4
+struct hit_point
+{
+  uint8 Flags;
+  uint8 FilledAmount;
 };
 
 struct low_entity
@@ -228,6 +237,9 @@ struct low_entity
   bool32 Collides;
   int32 dAbsTileZ;
   uint32 HighEntityIndex;
+
+  uint32 HitPointMax;
+  hit_point HitPoint[16];
 };
 
 struct entity
@@ -236,6 +248,16 @@ struct entity
   low_entity *Low;
   high_entity *High;
 };
+
+struct entity_visible_piece
+{
+  loaded_bitmap *Bitmap;
+  v2 Offset;
+  real32 OffsetZ;
+  real32 R, G, B, A;
+  v2 Dim;
+};
+
 
 struct game_state
 {
@@ -253,9 +275,19 @@ struct game_state
   low_entity LowEntities[4096];
   
   uint32 CameraFollowEntityIndex;
+  real32 MetersToPixels;
+  
   loaded_bitmap BackGround;
   loaded_bitmap Wall;
+  loaded_bitmap Monster;
   wizard Wizard;
+};
+
+struct entity_visible_piece_group
+{
+  game_state *GameState;
+  uint32 Count;
+  entity_visible_piece Pieces[32];
 };
 
 struct game_memory

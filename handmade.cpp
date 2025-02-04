@@ -325,7 +325,7 @@ inline low_entity *GetLowEntity(game_state *GameState, uint32 LowIndex)
   return Result;
 }
 
-inline entity GetHighEntity(game_state *GameState, uint32 LowIndex)
+inline entity ForceEntityToHigh(game_state *GameState, uint32 LowIndex)
 {
   entity Result = {};
   if((LowIndex > 0) && (LowIndex < GameState->LowEntityCount))
@@ -337,7 +337,13 @@ inline entity GetHighEntity(game_state *GameState, uint32 LowIndex)
   return Result;
 }
 
-internal uint32 AddLowEntity(game_state *GameState, entity_type Type, world_position *P)
+struct add_low_entity_result
+{
+  low_entity *Low;
+  uint32 LowIndex;
+};
+
+internal add_low_entity_result AddLowEntity(game_state *GameState, entity_type Type, world_position *P)
 {  
   Assert(GameState->LowEntityCount < ArrayCount(GameState->LowEntities));
   uint32 EntityIndex = GameState->LowEntityCount++;
@@ -351,7 +357,12 @@ internal uint32 AddLowEntity(game_state *GameState, entity_type Type, world_posi
     EntityLow->P = *P;
     ChangeEntityLocation(&GameState->WorldArena, GameState->World, EntityIndex, 0, P);
   }
-  return EntityIndex;
+
+  add_low_entity_result Result;
+  Result.Low = EntityLow;
+  Result.LowIndex = EntityIndex;
+  
+  return Result;
 }
 
 inline void OffsetAndCheckFrequencyByArea(game_state *GameState, v2 Offset, rectangle2 CameraBounds)
@@ -374,38 +385,90 @@ inline void OffsetAndCheckFrequencyByArea(game_state *GameState, v2 Offset, rect
 
 }
 
-internal uint32 AddPlayers(game_state *GameState, uint32 Offset = 0)
+internal add_low_entity_result AddPlayers(game_state *GameState, uint32 Offset = 0)
 {
   world_position P = GameState->CameraP;
-  uint32 EntityIndex = AddLowEntity(GameState, EntityType_Hero, &P);
-  low_entity *EntityLow = GetLowEntity(GameState, EntityIndex);
+  add_low_entity_result Entity = AddLowEntity(GameState, EntityType_Hero, &P);
 
-  EntityLow->Width =  GameState->World->TileSideInMeter * 0.85f;
-  EntityLow->Height = GameState->World->TileSideInMeter * 0.85f;
-  EntityLow->Collides = true;
+  Entity.Low->HitPointMax = 3;
+  Entity.Low->HitPoint[2].FilledAmount = HIT_POINT_SUB_COUNT;
+  Entity.Low->HitPoint[0] = Entity.Low->HitPoint[1] = Entity.Low->HitPoint[2];
+  Entity.Low->Width =  GameState->World->TileSideInMeter * 0.85f;
+  Entity.Low->Height = GameState->World->TileSideInMeter * 0.85f;
+  Entity.Low->Collides = true;
 
   if(GameState->CameraFollowEntityIndex == 0)
   {
-    GameState->CameraFollowEntityIndex = EntityIndex;
+    GameState->CameraFollowEntityIndex = Entity.LowIndex;
   }
-  return EntityIndex;
+  return Entity;
 }
 
 
-internal uint32 AddWall(game_state *GameState, uint32 AbsTileX, uint32 AbsTileY, uint32 AbsTileZ)
+internal add_low_entity_result AddWall(game_state *GameState, uint32 AbsTileX, uint32 AbsTileY, uint32 AbsTileZ)
 {
   world_position P =  ChunkPositionFromTilePosition(GameState->World, AbsTileX, AbsTileY, AbsTileZ);
-  uint32 EntityIndex = AddLowEntity(GameState, EntityType_Wall, &P);
-  low_entity *Entity = GetLowEntity(GameState, EntityIndex);
+  add_low_entity_result Entity = AddLowEntity(GameState, EntityType_Wall, &P);
 
-  Entity->Height = GameState->World->TileSideInMeter;
-  Entity->Width =  GameState->World->TileSideInMeter;
-  Entity->Collides = true;
+  Entity.Low->Height = GameState->World->TileSideInMeter;
+  Entity.Low->Width =  GameState->World->TileSideInMeter;
+  Entity.Low->Collides = true;
 
-  return EntityIndex;
+  return Entity;
 }
 
-void MovePlayer(game_state *GameState, entity Entity, real32 dt, v2 ddPlayer)
+internal add_low_entity_result AddMonster(game_state *GameState, uint32 AbsTileX, uint32 AbsTileY, uint32 AbsTileZ)
+{
+   world_position P =  ChunkPositionFromTilePosition(GameState->World, AbsTileX, AbsTileY, AbsTileZ);
+  add_low_entity_result Entity = AddLowEntity(GameState, EntityType_Monster, &P);
+
+  Entity.Low->Height = 0.5f;
+  Entity.Low->Width = 1.0f;
+  Entity.Low->Collides = true;
+
+  return Entity; 
+}
+
+internal add_low_entity_result AddFamiliar(game_state *GameState, uint32 AbsTileX, uint32 AbsTileY, uint32 AbsTileZ)
+{
+   world_position P =  ChunkPositionFromTilePosition(GameState->World, AbsTileX, AbsTileY, AbsTileZ);
+  add_low_entity_result Entity = AddLowEntity(GameState, EntityType_Familiar, &P);
+
+  Entity.Low->Height = 0.5f;
+  Entity.Low->Width = 1.0f;
+  Entity.Low->Collides = false;
+
+  return Entity; 
+}
+
+inline void PushPiece(entity_visible_piece_group *Group, loaded_bitmap *Bitmap, v2 Offset,
+		       real32 OffsetZ, v2 Align, v2 Dim, v4 Color)
+{
+  Assert(Group->Count < ArrayCount(Group->Pieces));
+  entity_visible_piece *Piece = Group->Pieces + Group->Count++;
+  Piece->Bitmap = Bitmap;
+  Piece->Offset = Group->GameState->MetersToPixels*v2{Offset.X, -Offset.Y} - Align;
+  Piece->OffsetZ = Group->GameState->MetersToPixels*OffsetZ;
+  Piece->R = Color.R;
+  Piece->G = Color.G;
+  Piece->B = Color.B;
+  Piece->A = Color.A;
+  Piece->Dim = Dim;
+}
+
+inline void PushBitmap(entity_visible_piece_group *Group, loaded_bitmap *Bitmap, v2 Offset,
+			 real32 OffsetZ, v2 Align, real32 Alpha = 1.0f)
+{
+  PushPiece(Group, Bitmap, Offset, OffsetZ, Align, v2{0, 0},v4{1.0f, 1.0f, 1.0f, Alpha});
+}
+
+inline void PushRect(entity_visible_piece_group *Group, v2 Offset,
+			 real32 OffsetZ, v2 Dim, v4 Color)
+{
+  PushPiece(Group, 0, Offset, OffsetZ, v2{0, 0}, Dim, Color);
+}
+
+void MoveEntity(game_state *GameState, entity Entity, real32 dt, v2 ddPlayer)
 {
       real32 Velocity = 60.0f;
       world *World = GameState->World;
@@ -437,6 +500,7 @@ void MovePlayer(game_state *GameState, entity Entity, real32 dt, v2 ddPlayer)
       MinTileY -= EntityTileHeight;
       MaxTileX += EntityTileWidth;
       MaxTileY += EntityTileHeight;
+h
 
       uint32 AbsTileZ = Entity.High->P.AbsTileZ;
       */
@@ -541,10 +605,8 @@ void MovePlayer(game_state *GameState, entity Entity, real32 dt, v2 ddPlayer)
 }
 
 
-internal void DrawBitmap(game_offscreen_buffer *Buffer, loaded_bitmap *Bitmap, real32 realX, real32 realY, int32 AlignX = 0, int32 AlignY = 0)
+internal void DrawBitmap(game_offscreen_buffer *Buffer, loaded_bitmap *Bitmap, real32 realX, real32 realY)
 {
-  realX -= (real32)AlignX;
-  realY -= (real32)AlignY;
   
   int32 MinX = RoundReal32ToInt32(realX);
   int32 MaxX = MinX + Bitmap->Width;
@@ -652,6 +714,53 @@ internal void SetCamera(game_state *GameState, world_position NewCameraP)
   }
 }
 
+inline entity EntityFromHighIndex(game_state *GameState, uint32 HighEntityIndex)
+{
+  entity Result = {};
+
+  if(HighEntityIndex)
+  {
+    Assert(HighEntityIndex < ArrayCount(GameState->HighEntities_));
+    Result.High = GameState->HighEntities_ + HighEntityIndex;
+    Result.LowIndex = Result.High->LowEntityIndex;
+    Result.Low = GameState->LowEntities + Result.LowIndex;
+  }
+
+  return Result;
+}
+
+inline void UpdateFamiliar(game_state *GameState, entity Entity, real32 dt)
+{
+  entity ClosestHero = {};
+  real32 ClosestHeroDSq = Square(10.0f); //Maximum search radius
+  for(uint32 HighEntityIndex = 1; HighEntityIndex < GameState->HighEntityCount; ++HighEntityIndex)
+  {
+    entity TestEntity = EntityFromHighIndex(GameState, HighEntityIndex);
+
+    if(TestEntity.Low->Type == EntityType_Hero)
+    {
+      real32 TestDSq = LenghtSq(TestEntity.High->P - Entity.High->P);
+      if(ClosestHeroDSq > TestDSq)
+      {
+	ClosestHero = TestEntity;
+	ClosestHeroDSq = TestDSq;
+      }
+    }
+  }
+  v2 ddP = {};
+  if(ClosestHero.High && (ClosestHeroDSq > Square(2.0f)))
+  {
+    real32 Acceleration = 0.5f;
+    real32 OneOverLength = Acceleration / SquareRoot(ClosestHeroDSq);
+    ddP = OneOverLength*(ClosestHero.High->P - Entity.High->P);
+    MoveEntity(GameState, Entity, dt, ddP);
+  }
+}
+
+inline void UpdateMonster(game_state *GameState, entity Entity, real32 dt)
+{
+}
+
 #if defined __cplusplus
 extern "C"
 #endif
@@ -672,7 +781,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->Wall = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/brick.bmp");
     GameState->Wizard.Wiz[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage1.bmp");
     GameState->Wizard.Wiz[1] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage2.bmp");
-    
+    GameState->Monster = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/monster.bmp");
+
 
     GameState->CameraP.ChunkX = 17/2;
     GameState->CameraP.ChunkY = 9/2;
@@ -844,9 +954,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       }
     }
     world_position NewCameraP = {};
-    NewCameraP = ChunkPositionFromTilePosition(GameState->World, ScreenBaseX*TilesPerWidth + 17/2, 
-					       ScreenBaseY*TilesPerHeight + 9/2,
-					       ScreenBaseZ);
+    uint32 CameraTileX = ScreenBaseX*TilesPerWidth + 17/2;
+    uint32 CameraTileY = ScreenBaseY*TilesPerHeight + 9/2;
+    uint32 CameraTileZ = ScreenBaseZ;
+    NewCameraP = ChunkPositionFromTilePosition(GameState->World, CameraTileX, CameraTileY, CameraTileZ);
+
+    AddMonster(GameState, CameraTileX + 2, CameraTileY + 2, CameraTileZ);
+    AddFamiliar(GameState, CameraTileX - 2, CameraTileY + 2, CameraTileZ);
 
     SetCamera(GameState, NewCameraP); 
     Memory->IsInitialized = true;
@@ -858,7 +972,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   world *World = GameState->World;
 
   uint32 TileSideInPixel = 60;
-  real32 MetersToPixels = (real32)TileSideInPixel / (real32)World->TileSideInMeter;
+  GameState->MetersToPixels = (real32)TileSideInPixel / (real32)World->TileSideInMeter;
+  real32 MetersToPixels = GameState->MetersToPixels;
   real32 LowerLeftX = -(real32)(TileSideInPixel / 2);
   real32 LowerLeftY = (real32)Buffer->Height;
 
@@ -873,7 +988,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       if(Controller->Start.EndedDown)
       {
-	uint32 EntityIndex = AddPlayers(GameState);
+	uint32 EntityIndex = AddPlayers(GameState).LowIndex;
 
 	GameState->PlayerIndexForControllers[ControllerIndex] = EntityIndex;
       }
@@ -881,7 +996,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     else
     {
       v2 ddPlayer = {};
-      entity ControllingEntity = GetHighEntity(GameState, LowIndex);
+      entity ControllingEntity = ForceEntityToHigh(GameState, LowIndex);
       if(Controller -> IsAnalog)
       {
         ddPlayer = v2{Controller->AvarageStickX, Controller->AvarageStickY};
@@ -909,11 +1024,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       {
 	ControllingEntity.High->dvZ = 3.0f;
       }
-      MovePlayer(GameState, ControllingEntity, Input->dtForFrame, ddPlayer);
+      MoveEntity(GameState, ControllingEntity, Input->dtForFrame, ddPlayer);
     }
   }
 
-  entity CameraFollowingEntity = GetHighEntity(GameState, GameState->CameraFollowEntityIndex);
+  entity CameraFollowingEntity = ForceEntityToHigh(GameState, GameState->CameraFollowEntityIndex);
   v2 EntityOffsetForFrame = {};
   if(CameraFollowingEntity.High)
   {
@@ -981,11 +1096,19 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
   }
 #endif
+  entity_visible_piece_group PieceGroup;
+  PieceGroup.GameState = GameState;
   for(uint32 HighEntityIndex = 1; HighEntityIndex < GameState->HighEntityCount; ++HighEntityIndex)
   {
+    PieceGroup.Count = 0;
+
     high_entity *HighEntity = GameState->HighEntities_ + HighEntityIndex;
     low_entity *LowEntity = GameState->LowEntities + HighEntity->LowEntityIndex;
-    HighEntity->P += EntityOffsetForFrame;
+    entity Entity;
+    Entity.LowIndex = HighEntity->LowEntityIndex;
+    Entity.Low = LowEntity;
+    Entity.High = HighEntity;
+    //HighEntity->P += EntityOffsetForFrame;
     
     real32 dt = Input->dtForFrame;
     real32 ddZ = -9.8f;
@@ -1005,16 +1128,71 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       			  PlayerGroundY - 0.5f * LowEntity->Height * MetersToPixels};
     v2 PlayerWidthHeigth = {LowEntity->Width, LowEntity->Height};
 
-    if(LowEntity->Type == EntityType_Hero)
+    switch(LowEntity->Type)
     {
-      //DrawRectangle(Buffer, PlayerLeftTop, PlayerLeftTop + MetersToPixels * PlayerWidthHeigth, 1.0f, 0.0f, 0.0f);
-      loaded_bitmap *Wizard = &GameState->Wizard.Wiz[HighEntity->WizFacingDirection];
-      DrawBitmap(Buffer, Wizard, PlayerGroundX, PlayerGroundY + Z, 50, 145);
+      case EntityType_Hero:
+      {
+        //DrawRectangle(Buffer, PlayerLeftTop, PlayerLeftTop + MetersToPixels * PlayerWidthHeigth, 1.0f, 0.0f, 0.0f);
+        loaded_bitmap *Wizard = &GameState->Wizard.Wiz[HighEntity->WizFacingDirection];
+        PushBitmap(&PieceGroup, Wizard, v2{0,0}, 0, v2{50, 145});
+
+	if(LowEntity->HitPointMax >= 1)
+	{
+	  v2 HealthDim = {0.3f, 0.3f};
+	  real32 SpacingX = 1.5f*HealthDim.X;
+	  real32 FirstX = 1.5f*(LowEntity->HitPointMax - 1);
+	  v2 HitP = {-0.5f*(LowEntity->HitPointMax - 1)*SpacingX, -0.3f};
+	  v2 dHitP = {SpacingX, 0.0f};
+	  for(uint32 HealthIndex = 0; HealthIndex < LowEntity->HitPointMax; ++HealthIndex)
+	  {
+	    hit_point *HitPoint = LowEntity->HitPoint + HealthIndex;
+	    v4 Color = v4{1.0f, 0.0f, 0.0f, 1.0f};
+	   
+	    if(HitPoint->FilledAmount == 0)
+	    {
+	      Color = v4{0.2f, 0.2f, 0.2f, 1.0f};
+	    }
+	    PushRect(&PieceGroup, HitP, 0, HealthDim, Color);
+	    HitP += dHitP;
+	  }
+	}
+      } break;
+      case EntityType_Wall:
+      {
+        PushBitmap(&PieceGroup, &GameState->Wall, v2{0,0}, 0, v2{40, 80});
+        //DrawRectangle(Buffer, PlayerLeftTop, PlayerLeftTop + MetersToPixels * PlayerWidthHeigth, 1.0f, 1.0f, 1.0f);
+      } break;
+      case EntityType_Monster:
+      {
+	UpdateMonster(GameState, Entity, dt);
+        PushBitmap(&PieceGroup, &GameState->Monster, v2{0,0}, 0, v2{40, 80});
+      } break;
+      case EntityType_Familiar:
+      {
+	UpdateFamiliar(GameState, Entity, dt);
+        loaded_bitmap *Wizard = &GameState->Wizard.Wiz[HighEntity->WizFacingDirection];
+	PushBitmap(&PieceGroup, Wizard, v2{0,0}, 0, v2{50, 145});
+
+      } break;
+      default:
+      {
+        InvalidCodePath;
+      } break;
     }
-    else
+    for(uint32 PieceIndex = 0; PieceIndex < PieceGroup.Count; ++PieceIndex)
     {
-      DrawBitmap(Buffer, &GameState->Wall, PlayerGroundX, PlayerGroundY + Z, 40, 80);
-      //DrawRectangle(Buffer, PlayerLeftTop, PlayerLeftTop + MetersToPixels * PlayerWidthHeigth, 1.0f, 1.0f, 1.0f);
+      entity_visible_piece *Piece = PieceGroup.Pieces + PieceIndex;
+      v2 Center = {PlayerGroundX + Piece->Offset.X, PlayerGroundY + Piece->Offset.Y + Piece->OffsetZ + Z};
+      if(Piece->Bitmap)
+      {
+	DrawBitmap(Buffer, Piece->Bitmap, PlayerGroundX + Piece->Offset.X,
+		   PlayerGroundY + Piece->Offset.Y + Piece->OffsetZ + Z);
+      }
+      else
+      {
+	v2 HalfDim = 0.5f*MetersToPixels*Piece->Dim;
+	DrawRectangle(Buffer, Center-HalfDim, Center+HalfDim, Piece->R, Piece->G, Piece->B);
+      }
     }
   }
 }

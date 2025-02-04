@@ -8,11 +8,49 @@ struct v2
     {
       real32 X, Y;
     };
-      real32 E[2];
+    real32 E[2];
   };
   v2 &operator*=(real32 A);
   v2 &operator+=(v2 A);
 };
+
+struct v3
+{
+  union
+  {
+    struct
+    {
+      real32 X, Y, Z;
+    };
+    struct
+    {
+      real32 R, G, B;
+    };
+    real32 E[3];
+  };
+  v2 &operator*=(real32 A);
+  v2 &operator+=(v2 A);
+};
+
+
+struct v4
+{
+  union
+  {
+    struct
+    {
+      real32 X, Y, Z, W;
+    };
+    struct
+    {
+      real32 R, G, B, A;
+    };
+    real32 E[4];
+  };
+  v2 &operator*=(real32 A);
+  v2 &operator+=(v2 A);
+};
+
 
 v2 operator+(v2 A, v2 B)
 {
