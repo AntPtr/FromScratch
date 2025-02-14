@@ -49,6 +49,8 @@ typedef int32 bool32;
 
 typedef float real32;
 typedef double real64;
+
+#include "handmade_intrisic.h"
 #include "handmade_math.h"
 
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
@@ -168,8 +170,6 @@ inline game_controller_input *GetController(game_input *Input, int ControllerInd
   return Result;
 }
 
-
-#include "handmade_intrisic.h"
 #include "handmade_world.h"
 
 struct memory_arena
@@ -216,6 +216,8 @@ enum entity_type
   EntityType_Wall,
   EntityType_Familiar,
   EntityType_Monster,
+  EntityType_Sword,
+  EntityType_Staff,
 };
 
 #define HIT_POINT_SUB_COUNT 4
@@ -240,6 +242,10 @@ struct low_entity
 
   uint32 HitPointMax;
   hit_point HitPoint[16];
+
+  uint32 SwordLowIndex;
+  uint32 StaffLowIndex;
+  real32 DistanceRemaining;
 };
 
 struct entity
@@ -280,6 +286,8 @@ struct game_state
   loaded_bitmap BackGround;
   loaded_bitmap Wall;
   loaded_bitmap Monster;
+  loaded_bitmap Sword;
+  loaded_bitmap Staff;
   wizard Wizard;
 };
 

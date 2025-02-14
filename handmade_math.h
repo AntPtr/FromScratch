@@ -123,6 +123,12 @@ inline real32 LenghtSq(v2 A)
   return Result;
 }
 
+inline real32 Length(v2 A)
+{
+  real32 Result = SquareRoot(LenghtSq(A));
+  return Result;
+}
+
 inline int32 SignOf(int32 Value)
 {
   int32 Result;
