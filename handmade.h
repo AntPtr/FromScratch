@@ -52,6 +52,9 @@ typedef double real64;
 
 #include "handmade_intrisic.h"
 #include "handmade_math.h"
+#include "handmade_world.h"
+#include "handmade_sim_region.h"
+#include "handmade_entity.h"
 
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
 
@@ -170,8 +173,6 @@ inline game_controller_input *GetController(game_input *Input, int ControllerInd
   return Result;
 }
 
-#include "handmade_world.h"
-
 struct memory_arena
 {
   memory_index Size;
@@ -197,7 +198,7 @@ struct wizard
 };
 
 
-struct high_entity
+/*struct high_entity
 {
   v2 dvP;
   v2 P;
@@ -207,54 +208,26 @@ struct high_entity
   real32 Z;
   real32 dvZ;
   uint32 LowEntityIndex;
-};
+};*/
 
-enum entity_type
-{
-  EntityType_Null,
-  EntityType_Hero,
-  EntityType_Wall,
-  EntityType_Familiar,
-  EntityType_Monster,
-  EntityType_Sword,
-  EntityType_Staff,
-};
+
 
 #define HIT_POINT_SUB_COUNT 4
-struct hit_point
-{
-  uint8 Flags;
-  uint8 FilledAmount;
-};
+
 
 struct low_entity
 {
-  entity_type Type;
-  
+  sim_entity Sim;
   world_position P;
-  real32 Height;
-  real32 Width;
-  
-  //This is for ladders
-  bool32 Collides;
-  int32 dAbsTileZ;
-  uint32 HighEntityIndex;
-
-  uint32 HitPointMax;
-  hit_point HitPoint[16];
-
-  uint32 SwordLowIndex;
-  uint32 StaffLowIndex;
-  real32 DistanceRemaining;
 };
-
+/*
 struct entity
 {
   uint32 LowIndex;
   low_entity *Low;
   high_entity *High;
 };
-
+*/
 struct entity_visible_piece
 {
   loaded_bitmap *Bitmap;
@@ -264,6 +237,13 @@ struct entity_visible_piece
   v2 Dim;
 };
 
+struct controlled_hero
+{
+  uint32 EntityIndex;
+  v2 ddPlayer;
+  v2 dSword;
+  real32 dvZ;
+};
 
 struct game_state
 {
@@ -272,13 +252,10 @@ struct game_state
   world_position CameraP;
 
   uint32 PlayerCount;
-  uint32 PlayerIndexForControllers[ArrayCount(((game_input *)0)->Controllers)];
-
-  uint32 HighEntityCount;
-  high_entity HighEntities_[256];
+  controlled_hero ControlledHeroes[ArrayCount(((game_input *)0)->Controllers)];
 
   uint32 LowEntityCount;
-  low_entity LowEntities[4096];
+  low_entity LowEntities[100000];
   
   uint32 CameraFollowEntityIndex;
   real32 MetersToPixels;
@@ -313,10 +290,10 @@ struct game_memory
   debug_platform_write_entire_file *DEBUGPlatformWriteEntireFile;
 };
 
-internal void InitializeArena(memory_arena *Arena, memory_index Size, uint8* Base)
+internal void InitializeArena(memory_arena *Arena, memory_index Size, void* Base)
 {
   Arena->Size = Size;
-  Arena->Base = Base;
+  Arena->Base = (uint8 *)Base;
   Arena->Used = 0;
 }
 
@@ -330,6 +307,16 @@ internal void *PushSize(memory_arena *Arena, memory_index Size)
   return Result;
 }
 
+#define ZeroStruct(Instance) ZeroSize(sizeof(Instance), &Instance)
+inline void ZeroSize(memory_index Size, void *Ptr)
+{
+  uint8 *Byte = (uint8 *)Ptr;
+  while(Size--)
+  {
+    *Byte++= 0;
+  }
+}
+
 #define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread ,game_memory *Memory, game_input *Input, game_offscreen_buffer* Buffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
@@ -337,6 +324,15 @@ typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 #define GAME_GET_SOUND_SAMPLES(name) void name(thread_context *Thread ,game_memory *Memory, game_sound_output_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
- 
+inline low_entity *GetLowEntity(game_state *GameState, uint32 LowIndex)
+{
+  low_entity *Result = 0;
+  if((LowIndex > 0) && (LowIndex < GameState->LowEntityCount))
+  {
+    Result = GameState->LowEntities + LowIndex;
+  }
+  return Result;
+}
+
 #define HANDMADE_H
 #endif

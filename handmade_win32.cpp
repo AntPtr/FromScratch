@@ -961,7 +961,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
       LPVOID BaseAddress = 0;
 #endif
       game_memory GameMemory = {};
-      GameMemory.PermanentStorageSize = Megabytes(64);
+      GameMemory.PermanentStorageSize = Gigabytes(1);
       GameMemory.TransientStorageSize  = Gigabytes(1);
       uint64 TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
       Win32State.TotalSize = (GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize);

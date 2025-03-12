@@ -18,8 +18,9 @@ inline bool32 IsValid(world_position *P)
 
 inline bool32 IsCanonical(world *World, real32 TileRel)
 {
-  bool32 Result = ((TileRel >= -0.5f * World->ChunkSideInMeter) &&
-		   (TileRel <= 0.5f * World->ChunkSideInMeter));
+  real32 Epsilon = 0.0001f;
+  bool32 Result = ((TileRel >= -(0.5f * World->ChunkSideInMeter + Epsilon)) &&
+		   (TileRel <= (0.5f * World->ChunkSideInMeter + Epsilon)));
   return Result;
 }
 
@@ -58,8 +59,22 @@ inline world_position ChunkPositionFromTilePosition(world *World, int32 AbsTileX
   Result.ChunkY = AbsTileY / TILES_PER_CHUNK;
   Result.ChunkZ = AbsTileZ / TILES_PER_CHUNK;
 
-  Result.Offset_.X = (real32)(AbsTileX - (Result.ChunkX*TILES_PER_CHUNK)) * World->TileSideInMeter;
-  Result.Offset_.Y = (real32)(AbsTileY - (Result.ChunkY*TILES_PER_CHUNK)) * World->TileSideInMeter;
+  if(AbsTileX < 0)
+  {
+    --Result.ChunkX;
+  }
+  if(AbsTileY < 0)
+  {
+    --Result.ChunkY;
+  }
+  if(AbsTileZ < 0)
+  {
+    --Result.ChunkZ;
+  }
+  
+
+  Result.Offset_.X = (real32)((AbsTileX - TILES_PER_CHUNK/2) - (Result.ChunkX * TILES_PER_CHUNK)) * World->TileSideInMeter;
+  Result.Offset_.Y = (real32)((AbsTileY - TILES_PER_CHUNK/2) - (Result.ChunkY * TILES_PER_CHUNK)) * World->TileSideInMeter;
 
   return Result;
 }
@@ -254,15 +269,32 @@ inline void ChangeEntityLocationRaw(memory_arena *Arena, world *World, uint32 Lo
 }
 
 internal void ChangeEntityLocation(memory_arena *Arena, world *World, uint32 LowEntityIndex, low_entity *LowEntity,
-				      world_position *OldP, world_position *NewP)
+				      world_position NewPInit)
 {
+
+  world_position *NewP = 0;
+  world_position *OldP = 0;
+
+  if(!IsSet(&LowEntity->Sim, EntityFlag_Nonspatial) && IsValid(&LowEntity->P))
+  {
+    OldP = &LowEntity->P;
+  }
+
+  if(IsValid(&NewPInit))
+  {
+    NewP = &NewPInit;
+  }
+  
   ChangeEntityLocationRaw(Arena, World, LowEntityIndex, OldP, NewP);
+
   if(NewP)
   {
     LowEntity->P = *NewP;
+    ClearFlag(&LowEntity->Sim, EntityFlag_Nonspatial);
   }
   else
   {
     LowEntity->P = NullPosition();
+    AddFlag(&LowEntity->Sim, EntityFlag_Nonspatial);
   }
 }

@@ -173,6 +173,16 @@ inline rectangle2 RectCentDim(v2 Center, v2 Dim)
   return Rectangle;
 }
 
+inline rectangle2 AddRadiusTo(rectangle2 A, real32 RadiusW, real32 RadiusH)
+{
+  rectangle2 Result;
+
+  Result.Min = A.Min - v2{RadiusW, RadiusW};
+  Result.Max = A.Max + v2{RadiusH, RadiusH};
+  
+  return Result;
+}
+
 inline bool32 IsInRectangle(rectangle2 Rectangle, v2 Test)
 {
   bool32 Result = ((Test.X >= Rectangle.Min.X) &&
