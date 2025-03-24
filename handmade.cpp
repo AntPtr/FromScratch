@@ -109,6 +109,72 @@ void GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffe
     }
 }
 
+internal void ClearCollisionRulesFor(game_state *GameState, uint32 StorageIndex)
+{
+  for(uint32 HashBucket = 0; HashBucket < ArrayCount(GameState->CollisionRuleHash); ++HashBucket)
+  {
+    for(pairwise_collision_rule **Rule = &GameState->CollisionRuleHash[HashBucket]; *Rule;)
+    {
+      if((*Rule)->StorageIndexA == StorageIndex || (*Rule)->StorageIndexB == StorageIndex)
+      {
+	pairwise_collision_rule *Removed = *Rule;
+	*Rule = (*Rule)->NextInHash;
+
+	Removed->NextInHash = GameState->FirstFreeCollisionRule;
+	GameState->FirstFreeCollisionRule = Removed;	
+      }
+      else
+      {
+	Rule = &(*Rule)->NextInHash;
+      }
+    }
+  }
+}
+
+internal void AddCollisionRule(game_state *GameState, uint32 StorageIndexA, uint32 StorageIndexB, bool32 ShouldCollide)
+{
+  if(StorageIndexA > StorageIndexB)
+  {
+    uint32 Temp = StorageIndexA;
+    StorageIndexA = StorageIndexB;
+    StorageIndexB = Temp;
+  }
+
+  pairwise_collision_rule *Found = 0;
+  uint32 HashBucket = StorageIndexA & (ArrayCount(GameState->CollisionRuleHash) -1);
+  for(pairwise_collision_rule *Rule = GameState->CollisionRuleHash[HashBucket]; Rule; Rule = Rule->NextInHash)
+  {
+    if((Rule->StorageIndexA == StorageIndexA) && (Rule->StorageIndexB == StorageIndexB))
+      {
+	Found = Rule;
+	break;
+      }
+  }
+  
+  if(!Found)
+  {
+    Found = GameState->FirstFreeCollisionRule;
+    if(Found)
+    {
+      GameState->FirstFreeCollisionRule = Found->NextInHash;
+    }
+    else
+    {
+      Found = PushStruct(&GameState->WorldArena, pairwise_collision_rule);
+    }
+    Found->NextInHash = GameState->CollisionRuleHash[HashBucket];
+    GameState->CollisionRuleHash[HashBucket] = Found;
+  }
+
+  if(Found)
+  {
+    Found->StorageIndexA = StorageIndexA;
+    Found->StorageIndexB = StorageIndexB;
+    Found->ShouldCollide = ShouldCollide;
+  }
+  
+}
+
 uint32 RandomNumberTable[] =
 {
   0x1fb1ca2b, 0x010140e2, 0x0fe18c2d, 0x239217d9, 0x16429a54,
@@ -398,9 +464,6 @@ internal add_low_entity_result AddPlayers(game_state *GameState, uint32 Offset =
 
   add_low_entity_result Sword = AddSword(GameState);
   Entity.Low->Sim.Sword.Index = Sword.LowIndex;
-
-  /*add_low_entity_result Staff = AddStaff(GameState);
-    Entity.Low->Sim.Staff.Index = Staff.LowIndex;*/
   
   InitHitpoints(Entity.Low, 3);
   if(GameState->CameraFollowEntityIndex == 0)
@@ -934,12 +997,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       PieceGroup.Count = 0;
       
       real32 dt = Input->dtForFrame;
-      
-#if 0    
-      v2 PlayerLeftTop = {PlayerGroundX - 0.5f * LowEntity->Width * MetersToPixels,
-        			  PlayerGroundY - 0.5f * LowEntity->Height * MetersToPixels};
-      v2 PlayerWidthHeigth = {LowEntity->Width, LowEntity->Height};
-#endif
+
+      move_spec MoveSpec = DefaultMoveSpec();
+      v2 ddP = {};
       switch(Entity->Type)
       {
         case EntityType_Hero:
@@ -954,29 +1014,30 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       	    {
       	      Entity->dvZ = ConHero->dvZ;
       	    }
-      	    MoveSpec MoveSpec = DefaultMoveSpec();
+
       	    MoveSpec.UnitMaxAccelVector = true;
       	    MoveSpec.Speed = 50.0f;
       	    MoveSpec.Drag = 8.0f;
-      	    MoveEntity(SimRegion, Entity, Input->dtForFrame, &MoveSpec, ConHero->ddPlayer);
+	    ddP = ConHero->ddPlayer;
+	    
       	    if((ConHero->dSword.X != 0) || (ConHero->dSword.Y != 0))
       	    {
       	      sim_entity *Sword = Entity->Sword.Ptr;
       	      if(Sword && IsSet(Sword, EntityFlag_Nonspatial))
       	      {
-      		Sword->DistanceRemaining = 5.0f;
+      		Sword->DistanceLimit = 5.0f;
       		MakeEntitySpatial(Sword, Entity->P, 5.0f*ConHero->dSword);
+		AddCollisionRule(GameState, Sword->StorageIndex, Entity->StorageIndex, false);
+
       	      }
       	      sim_entity *Staff = Entity->Staff.Ptr;
       	      if(Staff)
       	      {			
       		Staff->P = Entity->P;
-      		Staff->DistanceRemaining = 0.1f;
+      		Staff->DistanceLimit = 0.1f;
       		Staff->dvP = 0.3f*ConHero->dSword;	 
       	      }
-      
-      	    }
-      	    
+      	    }       
       	  }
       	}
       		
@@ -992,18 +1053,61 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         } break;
         case EntityType_Monster:
         {
-	  UpdateMonster(SimRegion, Entity, dt);
-          PushBitmap(&PieceGroup, &GameState->Monster, v2{0,0}, 0, v2{40, 80});
-	  DrawHitpoints(Entity, &PieceGroup);
+	  if(Entity->HitPointMax == 0)
+	  {
+	    MakeEntityNonSpatial(Entity);
+	  }
+	  else
+	  {
+	    PushBitmap(&PieceGroup, &GameState->Monster, v2{0,0}, 0, v2{40, 80});
+	    DrawHitpoints(Entity, &PieceGroup);
+	  }
         } break;
         case EntityType_Sword:
         {
-	  UpdateSword(SimRegion, Entity, dt);
+
+	  MoveSpec.UnitMaxAccelVector = false;
+	  MoveSpec.Speed = 0.0f;
+	  MoveSpec.Drag = 0.0f;
+  
+	  v2 OldP = Entity->P;
+
+	  if(Entity->DistanceLimit == 0)
+	  {
+	    ClearCollisionRulesFor(GameState, Entity->StorageIndex);
+	    MakeEntityNonSpatial(Entity);
+	  }
 	  PushBitmap(&PieceGroup, &GameState->Sword, v2{0,0}, 0, v2{25, 25});
         } break;
         case EntityType_Familiar:
-        {
-	  UpdateFamiliar(SimRegion, Entity, dt);
+        {  
+	  sim_entity *ClosestHero = 0;
+	  real32 ClosestHeroDSq = Square(10.0f); //Maximum search radius
+
+	  sim_entity *TestEntity = SimRegion->Entities;
+	  for(uint32 TestEntityIndex = 0; TestEntityIndex < SimRegion->EntityCount; ++TestEntityIndex, ++TestEntity)
+	  {
+	    if(TestEntity->Type == EntityType_Hero)
+	    {
+	      real32 TestDSq = LenghtSq(TestEntity->P - Entity->P);
+	      if(ClosestHeroDSq > TestDSq)
+	      {
+		ClosestHero = TestEntity;
+		ClosestHeroDSq = TestDSq;
+	      }
+	    }
+	  }
+	  if(ClosestHero && (ClosestHeroDSq > Square(2.0f)))
+	  {
+	    real32 Acceleration = 0.5f;
+	    real32 OneOverLength = Acceleration / SquareRoot(ClosestHeroDSq);
+	    ddP = OneOverLength*(ClosestHero->P - Entity->P);
+	  }
+
+	  MoveSpec.UnitMaxAccelVector = true;
+	  MoveSpec.Speed = 50.0f;
+	  MoveSpec.Drag = 8.0f;
+
           loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
 	  PushBitmap(&PieceGroup, Wizard, v2{0,0}, 0, v2{50, 145});
         } break;
@@ -1019,15 +1123,14 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       }
       real32 EntityGroundX = ScreenCenterX + MetersToPixels*Entity->P.X;
       real32 EntityGroundY = ScreenCenterY - MetersToPixels*Entity->P.Y;
-      real32 ddZ = -9.8f;
-      Entity->Z = 0.5f*ddZ*Square(dt)+Entity->dvZ*dt + Entity->Z;
-      Entity->dvZ = ddZ*dt + Entity->dvZ;
-      if(Entity->Z < 0)
+
+      if(!IsSet(Entity, EntityFlag_Nonspatial))
       {
-        Entity->Z = 0;
+	MoveEntity(GameState, SimRegion, Entity, Input->dtForFrame, &MoveSpec, ddP);
       }
-      
+
       real32 Z = -Entity->Z * MetersToPixels;
+
       for(uint32 PieceIndex = 0; PieceIndex < PieceGroup.Count; ++PieceIndex)
       {
         entity_visible_piece *Piece = PieceGroup.Pieces + PieceIndex;

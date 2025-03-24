@@ -1,5 +1,5 @@
 #if !defined(HANDMADE_SIM_REGION_H)
-struct MoveSpec
+struct move_spec
 {
   bool32 UnitMaxAccelVector;
   real32 Speed;
@@ -57,6 +57,8 @@ struct sim_entity
   v2 dvP;
   real32 Height;
   real32 Width;
+
+  real32 DistanceLimit;
   
   //This is for ladders
   int32 dAbsTileZ;
@@ -67,7 +69,7 @@ struct sim_entity
 
   entity_reference Sword;
   entity_reference Staff;
-  real32 DistanceRemaining;
+  
 };
 
 struct sim_entity_hash

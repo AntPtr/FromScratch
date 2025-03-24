@@ -245,6 +245,15 @@ struct controlled_hero
   real32 dvZ;
 };
 
+struct pairwise_collision_rule
+{
+  bool32 ShouldCollide;
+  uint32 StorageIndexA;
+  uint32 StorageIndexB;
+
+  pairwise_collision_rule *NextInHash;
+};
+
 struct game_state
 {
   memory_arena WorldArena;
@@ -266,6 +275,9 @@ struct game_state
   loaded_bitmap Sword;
   loaded_bitmap Staff;
   wizard Wizard;
+
+  pairwise_collision_rule *CollisionRuleHash[256];
+  pairwise_collision_rule *FirstFreeCollisionRule;
 };
 
 struct entity_visible_piece_group
@@ -333,6 +345,10 @@ inline low_entity *GetLowEntity(game_state *GameState, uint32 LowIndex)
   }
   return Result;
 }
+
+internal void AddCollisionRule(game_state *GameState, uint32 StorageIndexA, uint32 StorageIndexB, bool32 ShouldCollide);
+
+internal void ClearCollisionRulesFor(game_state *GameState, uint32 StorageIndex);
 
 #define HANDMADE_H
 #endif
