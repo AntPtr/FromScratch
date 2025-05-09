@@ -15,6 +15,7 @@ enum entity_type
   EntityType_Monster,
   EntityType_Sword,
   EntityType_Staff,
+  EntityType_Stair,
 };
 
 struct hit_point
@@ -33,36 +34,51 @@ union entity_reference
 
 enum sim_entity_flags
 {
-  EntityFlag_Collides = (1 << 1),
-  EntityFlag_Nonspatial = (1 << 2),
-
+  EntityFlag_Collides = (1 << 0),
+  EntityFlag_Nonspatial = (1 << 1),
+  EntityFlag_Moveable = (1 << 2),
+  EntityFlag_ZSupported = (1 << 4),
   EntityFlag_Simming = (1 << 30),
+};
+
+struct sim_entity_collision_volume
+{
+  v3 OffsetP;
+  v3 Dim;
+};
+
+struct sim_entity_collision_volume_group
+{
+  uint32 VolumeCount;
+  sim_entity_collision_volume TotalVolume;
+  sim_entity_collision_volume *Volumes;
 };
 
 struct sim_entity
 {
+  world_chunk *OldChunk;
   uint32 StorageIndex;
   bool32 Updatable;
 
   uint32 Flags;
   
-  v2 P;
-  uint32 ChunkZ;
+  v3 P;
 
-  real32 Z;
-  real32 dvZ;
+  //real32 Z;
+  //real32 dvZ;
   entity_type Type;
   uint32 WizFacingDirection;
   
-  v2 dvP;
-  real32 Height;
-  real32 Width;
+  v3 dvP;
 
+  sim_entity_collision_volume_group *Collision;
+  
   real32 DistanceLimit;
   
-  //This is for ladders
   int32 dAbsTileZ;
-  // uint32 HighEntityIndex;
+
+  v2 WalkableDim;
+  real32 WalkableHeight;
 
   uint32 HitPointMax;
   hit_point HitPoint[16];
@@ -81,10 +97,13 @@ struct sim_entity_hash
 struct sim_region
 {
   world *World;
+
+  real32 MaxEntityRadius;
+  real32 MaxEntityVelocity;
   
   world_position Origin;
-  rectangle2 Bounds;
-  rectangle2 UpdatebleBounds;
+  rectangle3 Bounds;
+  rectangle3 UpdatebleBounds;
   
   uint32 MaxEntityCount;
   uint32 EntityCount;

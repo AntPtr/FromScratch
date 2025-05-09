@@ -1,9 +1,4 @@
 #if !defined(HANDMADE_WORLD_H)
-struct world_difference
-{
-  v2 dXY;
-  real32 dZ;
-};
 
 struct world_position
 {
@@ -11,7 +6,7 @@ struct world_position
   int32 ChunkY;
   int32 ChunkZ;
 
-  v2 Offset_;
+  v3 Offset_;
 };
 
 /*struct tile_chunk_position
@@ -50,6 +45,9 @@ struct world
 {
   real32 ChunkSideInMeter;
   real32 TileSideInMeter;
+  real32 TileDepthInMeters;
+  
+  v3 ChunkDimInMeters;
   
   int32 ChunkDim;  
   int32 ChunkShift;

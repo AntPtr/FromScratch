@@ -247,7 +247,7 @@ struct controlled_hero
 
 struct pairwise_collision_rule
 {
-  bool32 ShouldCollide;
+  bool32 CanCollide;
   uint32 StorageIndexA;
   uint32 StorageIndexB;
 
@@ -274,10 +274,19 @@ struct game_state
   loaded_bitmap Monster;
   loaded_bitmap Sword;
   loaded_bitmap Staff;
+  loaded_bitmap Stair;
   wizard Wizard;
 
   pairwise_collision_rule *CollisionRuleHash[256];
   pairwise_collision_rule *FirstFreeCollisionRule;
+
+  sim_entity_collision_volume_group *NullCollision;
+  sim_entity_collision_volume_group *SwordCollision;
+  sim_entity_collision_volume_group *PlayerCollision;
+  sim_entity_collision_volume_group *StairCollision;
+  sim_entity_collision_volume_group *MonsterCollision;
+  sim_entity_collision_volume_group *WallCollision;
+  sim_entity_collision_volume_group *FamiliarCollision;
 };
 
 struct entity_visible_piece_group
