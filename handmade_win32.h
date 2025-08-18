@@ -1,4 +1,6 @@
 #if !defined(HANDMADE_WIN32)
+
+#define BITMAP_BYTES_PER_PIXEL 4
 struct win32_offscreen_buffer
 {
   BITMAPINFO BitMapInfo;

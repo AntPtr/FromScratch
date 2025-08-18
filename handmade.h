@@ -178,18 +178,17 @@ struct memory_arena
   memory_index Size;
   uint8 *Base;
   memory_index Used;
+
+  int32 TempCount;
 };
 
-/*struct world
-{
-  tile_map *TileMap; 
-  };*/
-
+#define BITMAP_BYTES_PER_PIXEL 4
 struct loaded_bitmap
 {
   int32 Width;
   int32 Height;
-  uint32 *Pixels;
+  void *Memory;
+  int32 Pitch;
 };
 
 struct wizard
@@ -197,37 +196,14 @@ struct wizard
   loaded_bitmap Wiz[2];
 };
 
-
-/*struct high_entity
-{
-  v2 dvP;
-  v2 P;
-  uint32 ChunkZ;
-  uint32 WizFacingDirection;
-
-  real32 Z;
-  real32 dvZ;
-  uint32 LowEntityIndex;
-};*/
-
-
-
 #define HIT_POINT_SUB_COUNT 4
-
 
 struct low_entity
 {
   sim_entity Sim;
   world_position P;
 };
-/*
-struct entity
-{
-  uint32 LowIndex;
-  low_entity *Low;
-  high_entity *High;
-};
-*/
+
 struct entity_visible_piece
 {
   loaded_bitmap *Bitmap;
@@ -254,11 +230,19 @@ struct pairwise_collision_rule
   pairwise_collision_rule *NextInHash;
 };
 
+struct ground_buffer
+{
+  void *Memory;
+  world_position P;
+};
+
 struct game_state
 {
   memory_arena WorldArena;
   world* World;
   world_position CameraP;
+
+  real32 TypicalFloorHeight;
 
   uint32 PlayerCount;
   controlled_hero ControlledHeroes[ArrayCount(((game_input *)0)->Controllers)];
@@ -268,6 +252,7 @@ struct game_state
   
   uint32 CameraFollowEntityIndex;
   real32 MetersToPixels;
+  real32 PixelsToMeters;
   
   loaded_bitmap BackGround;
   loaded_bitmap Wall;
@@ -275,6 +260,8 @@ struct game_state
   loaded_bitmap Sword;
   loaded_bitmap Staff;
   loaded_bitmap Stair;
+  loaded_bitmap Grass[2];
+  loaded_bitmap Stones[2];
   wizard Wizard;
 
   pairwise_collision_rule *CollisionRuleHash[256];
@@ -287,6 +274,16 @@ struct game_state
   sim_entity_collision_volume_group *MonsterCollision;
   sim_entity_collision_volume_group *WallCollision;
   sim_entity_collision_volume_group *FamiliarCollision;
+  sim_entity_collision_volume_group *StandardRoomCollision;
+};
+
+struct transient_state
+{
+  bool32 Initialized;
+  memory_arena TranArena;
+  uint32 GroundBufferCount;
+  loaded_bitmap GroundBitmapTemplate;
+  ground_buffer *GroundBuffers;
 };
 
 struct entity_visible_piece_group
@@ -316,6 +313,7 @@ internal void InitializeArena(memory_arena *Arena, memory_index Size, void* Base
   Arena->Size = Size;
   Arena->Base = (uint8 *)Base;
   Arena->Used = 0;
+  Arena->TempCount = 0;
 }
 
 #define PushStruct(Arena, type) (type *)PushSize(Arena, sizeof(type))
@@ -336,6 +334,38 @@ inline void ZeroSize(memory_index Size, void *Ptr)
   {
     *Byte++= 0;
   }
+}
+
+struct temporary_memory
+{
+  memory_index Used;
+  memory_arena *Arena;
+};
+
+inline temporary_memory BeginTemporaryMemory(memory_arena *Arena)
+{
+  temporary_memory Result;
+
+  Result.Arena = Arena;
+  Result.Used = Arena->Used;
+
+  ++Arena->TempCount;
+  
+  return Result;
+}
+
+inline void EndTemporaryMemory(temporary_memory TempMem)
+{
+  memory_arena *Arena = TempMem.Arena;
+  Assert(Arena->Used >= TempMem.Used);
+  Arena->Used = TempMem.Used;
+  Assert(Arena->TempCount > 0);
+  --Arena->TempCount;
+}
+
+inline void CheckArena(memory_arena *Arena)
+{
+  Assert(Arena->TempCount == 0);
 }
 
 #define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread ,game_memory *Memory, game_input *Input, game_offscreen_buffer* Buffer)

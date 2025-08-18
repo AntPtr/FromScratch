@@ -426,6 +426,16 @@ inline rectangle3 AddRadiusTo(rectangle3 A, v3 Radius)
   return Result;
 }
 
+inline rectangle3 Offset(rectangle3 A, v3 Offset)
+{
+    rectangle3 Result;
+    
+    Result.Min = A.Min + Offset;
+    Result.Max = A.Max + Offset;
+
+    return Result;
+}
+
 inline bool32 IsInRectangle(rectangle3 Rectangle, v3 Test)
 {
   bool32 Result = ((Test.X >= Rectangle.Min.X) &&
@@ -515,6 +525,18 @@ inline rectangle2 ToRectangleXY(rectangle3 Rect)
   Result.Min = Rect.Min.XY;
   Result.Max = Rect.Max.XY;
 
+  return Result;
+}
+
+inline v2 V2i(int32 X, int32 Y)
+{
+  v2 Result = {(real32)X, (real32)Y};
+  return Result;
+}
+
+inline v2 V2u(uint32 X, uint32 Y)
+{
+  v2 Result = {(real32)X, (real32)Y};
   return Result;
 }
 

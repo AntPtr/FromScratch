@@ -9,16 +9,6 @@ struct world_position
   v3 Offset_;
 };
 
-/*struct tile_chunk_position
-{
-  int32 TileChunkX;
-  int32 TileChunkY;
-  int32 TileChunkZ;
-
-  int32 RelTileX;
-  int32 RelTileY;
-  };*/
-
 struct world_entity_block
 {
   uint32 LowEntityCount;
@@ -44,8 +34,6 @@ struct world_chunk
 struct world
 {
   real32 ChunkSideInMeter;
-  real32 TileSideInMeter;
-  real32 TileDepthInMeters;
   
   v3 ChunkDimInMeters;
   
