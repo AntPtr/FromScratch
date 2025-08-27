@@ -1005,13 +1005,16 @@ int WINAPI wWinMain(HINSTANCE Instance,
         while(Running)
         {
 	  FILETIME NewDLLWriteTime = Win32GetLastWriteTime(SourceGameCodeDLLFullPath);
-	  if(CompareFileTime(&NewDLLWriteTime, &Game.DLLLastWriteTime))
+	  NewInput->dtForFrame = TargetSecPFrame;
+	  NewInput->ExcutableReloaded = false;
+
+	  if(CompareFileTime(&NewDLLWriteTime, &Game.DLLLastWriteTime) != 0)
 	  {
 	    Game.DLLLastWriteTime = NewDLLWriteTime;
 	    Win32UnloadGameCode(&Game);
 	    Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, TempGameCodeDLLFullPath, LockFullPath);
+	    NewInput->ExcutableReloaded = true;
 	  }
-	  NewInput->dtForFrame = TargetSecPFrame;
 	  game_controller_input *NewKeyBoardController = GetController(NewInput, 0);
 	  game_controller_input *OldKeyBoardController = GetController(OldInput, 0);
 	  

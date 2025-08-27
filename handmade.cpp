@@ -597,26 +597,38 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
   
   real32 Width = (real32)Buffer.Width;
   real32 Height = (real32)Buffer.Height;
-  random_series Series = Seed(124*ChunkP->ChunkX + 242*ChunkP->ChunkY + 24*ChunkP->ChunkZ);
-  v2 Center = 0.5f*V2i(Buffer.Width,Buffer.Height);
-  for(uint32 Grass = 0; Grass < 1; ++Grass)
+
+  int32 ChunkZ = ChunkP->ChunkZ;
+  
+  for(int32 ChunkOffsetY = -1; ChunkOffsetY <= 1; ++ChunkOffsetY)
   {
-    loaded_bitmap *Stamp;
-    if(RandomChoice(&Series, 2))
+    for(int32 ChunkOffsetX = -1; ChunkOffsetX <= 1; ++ChunkOffsetX)
     {
-      Stamp = GameState->Grass + RandomChoice(&Series, ArrayCount(GameState->Grass));
-    }
-    else
-    {
-      Stamp = GameState->Stones + RandomChoice(&Series, ArrayCount(GameState->Stones));
-    }
-    v2 Offset = {RandomUnilateral(&Series)*Width, RandomUnilateral(&Series)*Height};
+      int32 ChunkX = ChunkP->ChunkX + ChunkOffsetX;
+      int32 ChunkY = ChunkP->ChunkY + ChunkOffsetY;
+      
+      random_series Series = Seed(124*ChunkX + 242*ChunkY + 24*ChunkZ);
+      v2 Center = v2{ChunkOffsetX*Width, -ChunkOffsetY*Height};
+      for(uint32 Grass = 0; Grass < 1; ++Grass)
+      {
+	loaded_bitmap *Stamp;
+	if(RandomChoice(&Series, 2))
+	{
+	  Stamp = GameState->Grass + RandomChoice(&Series, ArrayCount(GameState->Grass));
+	}
+	else
+        {
+	  Stamp = GameState->Stones + RandomChoice(&Series, ArrayCount(GameState->Stones));
+	}
+	v2 Offset = {RandomUnilateral(&Series)*Width, RandomUnilateral(&Series)*Height};
 
-    v2 BitmapCenter = 0.5f*V2i(Stamp->Width, Stamp->Height);
+	v2 BitmapCenter = 0.5f*V2i(Stamp->Width, Stamp->Height);
 
-    real32 Radius = 5.0f;
-    v2 P = Offset - BitmapCenter;
-    DrawBitmap(&Buffer, Stamp, P.X, P.Y);
+	real32 Radius = 5.0f;
+	v2 P = Center + Offset - BitmapCenter;
+	DrawBitmap(&Buffer, Stamp, P.X, P.Y);
+      }
+    }
   }
 }
 
@@ -740,7 +752,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     random_series Series = {4567};
 
-    for(uint32 ScreenIndex = 0; ScreenIndex < 1; ++ScreenIndex)
+    for(uint32 ScreenIndex = 0; ScreenIndex < 50; ++ScreenIndex)
     {
       uint32 DoorDirection;
       if(UpDoor || DownDoor)
@@ -827,10 +839,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  }
 	  if(ShouldBeDoor)
 	  {
-	    if(AbsTileZ > 0)
-	    {
-	      int Here = 5;
-	    }
 	    AddWall(GameState, AbsTileX, AbsTileY, AbsTileZ);
 	  }
 	  else if(CreatedZDoor)
@@ -901,7 +909,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     InitializeArena(&TranState->TranArena, Memory->TransientStorageSize - sizeof(transient_state), (uint8 *)Memory->TransientStorage + sizeof(transient_state));
 
-    TranState->GroundBufferCount = 10;
+    TranState->GroundBufferCount = 32;
     TranState->GroundBuffers = PushArray(&TranState->TranArena, TranState->GroundBufferCount, ground_buffer);
     for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
     {
@@ -914,6 +922,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
     
     TranState->Initialized = true;
+  }
+
+  if(Input->ExcutableReloaded)
+  {
+    for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
+    {
+      ground_buffer *GroundBuffer = TranState->GroundBuffers + GroundBufferIndex;
+      GroundBuffer->P = NullPosition();
+    } 
   }
   
   #define WORLD_COUNT_X 256
@@ -1006,63 +1023,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   DrawBitmap(DrawBuffer, &GameState->BackGround, 0, 0);
 
-
-  real32 ScreenWidthInMeters = DrawBuffer->Width * PixelsToMeters;
-  real32 ScreenHeightInMeters = DrawBuffer->Height * PixelsToMeters;
-  rectangle3 CameraBounds = RectCentDim(V3(0, 0, 0), V3(ScreenWidthInMeters, ScreenHeightInMeters, 0.0f));
-  v2 ScreenCenter = v2{0.5f*(real32)DrawBuffer->Width, 0.5f*(real32)DrawBuffer->Height};
-  {
-    world_position MinChunkP = MapIntoChunkSpace(World, GameState->CameraP, GetMinCorner(CameraBounds));
-    world_position MaxChunkP = MapIntoChunkSpace(World, GameState->CameraP, GetMaxCorner(CameraBounds));
-    for (int32 ChunkZ = MinChunkP.ChunkZ; ChunkZ < MaxChunkP.ChunkZ; ++ChunkZ)
-    {
-        for (int32 ChunkY = MinChunkP.ChunkY; ChunkY < MaxChunkP.ChunkY; ++ChunkY)
-        {
-            for (int32 ChunkX = MinChunkP.ChunkX; ChunkX < MaxChunkP.ChunkX; ++ChunkX)
-            {
-	        //world_chunk* Chunk = GetWorldChunk(World, ChunkX, ChunkY, ChunkZ);
-                //if (Chunk)
-                {
-		  world_position ChunkCenterP = CenteredChunkPoint(ChunkX, ChunkY, ChunkZ);
-		  v3 RelP = Subtract(World, &ChunkCenterP, &GameState->CameraP);
-		  v2 ScreenP = v2{ScreenCenter.X + MetersToPixels*RelP.X,
-				  ScreenCenter.Y - MetersToPixels*RelP.Y};
-		  v2 ScreenDim = MetersToPixels * World->ChunkDimInMeters.XY;
-		  bool32 Found = false;
-		  ground_buffer *EmptyBuffer = 0;
-		  for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
-                  {
-		    ground_buffer* GroundBuffer = TranState->GroundBuffers + GroundBufferIndex;
-		    if(AreInTheSameChunk(World, &GroundBuffer->P, &ChunkCenterP))
-                    {
-		      Found = true;
-		      break;
-		    }
-		    else if(!IsValid(&GroundBuffer->P))
-                    {
-		      EmptyBuffer = GroundBuffer;
-		    }
-		  }
-		  if(!Found && EmptyBuffer)
-		  {
-		    FillGroundChunk(TranState, GameState, EmptyBuffer, &ChunkCenterP);
-		  }
-                    DrawRectangleOutline(DrawBuffer, ScreenP - 0.5f*ScreenDim, ScreenP + 0.5f*ScreenDim, V3(1.0f, 1.0f, 0.0f));
-                }
-            }
-        }
-    }
-  }
-
-  v3 SimBoundsExpansion = {15.0f, 15.0f, 15.0f};
-  rectangle3 SimBounds = AddRadiusTo(CameraBounds, SimBoundsExpansion);
-
-  temporary_memory SimMemory = BeginTemporaryMemory(&TranState->TranArena);
-
-  
-  real32 dtForFrame = Input->dtForFrame;
-  sim_region *SimRegion = BeginSim(&TranState->TranArena, GameState, GameState->World, GameState->CameraP, SimBounds, dtForFrame);
-
   real32 ScreenCenX = 0.5f*(real32)DrawBuffer->Width;
   real32 ScreenCenY = 0.5f*(real32)DrawBuffer->Height;
   for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
@@ -1078,6 +1038,76 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       DrawBitmap(DrawBuffer, &Bitmap, Ground.X, Ground.Y);
     }
   }
+
+
+  real32 ScreenWidthInMeters = DrawBuffer->Width*PixelsToMeters;
+  real32 ScreenHeightInMeters = DrawBuffer->Height*PixelsToMeters;
+  rectangle3 CameraBounds = RectCentDim(V3(0, 0, 0), V3(ScreenWidthInMeters, ScreenHeightInMeters, 0.0f));
+  v2 ScreenCenter = v2{0.5f*(real32)DrawBuffer->Width, 0.5f*(real32)DrawBuffer->Height};
+  {
+    world_position MinChunkP = MapIntoChunkSpace(World, GameState->CameraP, GetMinCorner(CameraBounds));
+    world_position MaxChunkP = MapIntoChunkSpace(World, GameState->CameraP, GetMaxCorner(CameraBounds));
+    for (int32 ChunkZ = MinChunkP.ChunkZ; ChunkZ <= MaxChunkP.ChunkZ; ++ChunkZ)
+    {
+        for (int32 ChunkY = MinChunkP.ChunkY; ChunkY <= MaxChunkP.ChunkY; ++ChunkY)
+        {
+            for (int32 ChunkX = MinChunkP.ChunkX; ChunkX <= MaxChunkP.ChunkX; ++ChunkX)
+            {
+	        //world_chunk* Chunk = GetWorldChunk(World, ChunkX, ChunkY, ChunkZ);
+                //if (Chunk)
+                {
+		  world_position ChunkCenterP = CenteredChunkPoint(ChunkX, ChunkY, ChunkZ);
+		  v3 RelP = Subtract(World, &ChunkCenterP, &GameState->CameraP);
+		  v2 ScreenP = v2{ScreenCenter.X + MetersToPixels*RelP.X,
+				  ScreenCenter.Y - MetersToPixels*RelP.Y};
+		  v2 ScreenDim = MetersToPixels * World->ChunkDimInMeters.XY;
+		  ground_buffer *FurthestBuffer = 0;
+		  real32 FurthestBufferLengthSq = 0.0f;
+		  for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
+                  {
+		    ground_buffer* GroundBuffer = TranState->GroundBuffers + GroundBufferIndex;
+		    if(AreInTheSameChunk(World, &GroundBuffer->P, &ChunkCenterP))
+                    {
+		      FurthestBuffer = 0;
+		      break;
+		    }
+		    else if(IsValid(&GroundBuffer->P))
+                    {
+		      v3 ReP = Subtract(World, &GroundBuffer->P, &GameState->CameraP);
+		      real32 BufferLengthSq = LengthSq(ReP.XY);
+		      if(FurthestBufferLengthSq < BufferLengthSq)
+		      {
+			FurthestBufferLengthSq = BufferLengthSq;
+			FurthestBuffer = GroundBuffer;
+		      }
+		    }
+		    else
+		    {
+		      FurthestBufferLengthSq = Real32Maximum;
+		      FurthestBuffer = GroundBuffer;
+		    }
+		  }
+		  if(FurthestBuffer)
+		  {
+		    FillGroundChunk(TranState, GameState, FurthestBuffer, &ChunkCenterP);
+		  }
+		  
+		  DrawRectangleOutline(DrawBuffer, ScreenP - 0.5f*ScreenDim, ScreenP + 0.5f*ScreenDim, V3(1.0f, 1.0f, 0.0f));
+                }
+            }
+        }
+    }
+  }
+
+  v3 SimBoundsExpansion = {15.0f, 15.0f, 15.0f};
+  rectangle3 SimBounds = AddRadiusTo(CameraBounds, SimBoundsExpansion);
+
+  temporary_memory SimMemory = BeginTemporaryMemory(&TranState->TranArena);
+
+  
+  real32 dtForFrame = Input->dtForFrame;
+  sim_region *SimRegion = BeginSim(&TranState->TranArena, GameState, GameState->World, GameState->CameraP, SimBounds, dtForFrame);
+
 
 #if 0  
   for(int32 RelRow = -10; RelRow < 10; ++RelRow)

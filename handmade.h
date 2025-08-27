@@ -1,7 +1,7 @@
 #if !defined(HANDMADE_H)
 #include <math.h>
 #include <stdint.h>
-
+#include <float.h>
 
 #define local_persist static
 #define global_variable static
@@ -50,6 +50,8 @@ typedef int32 bool32;
 typedef float real32;
 typedef double real64;
 
+#define Real32Maximum FLT_MAX
+
 #include "handmade_intrisic.h"
 #include "handmade_math.h"
 #include "handmade_world.h"
@@ -88,7 +90,7 @@ typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
 
 #endif
 
-#define Kilobytes(value) (value*1024LL)
+#define Kilobytes(value) ((value)*1024LL)
 #define Megabytes(value) (Kilobytes(value)*1024LL)
 #define Gigabytes(value) (Megabytes(value)*1024LL)
 #define Terabytes(value) (Gigabytes(value)*1024LL)
@@ -162,8 +164,12 @@ struct game_input
 {
   game_button_state MouseButtons[5];
   int32 MouseX, MouseY, MouseZ;
+  
   real32 dtForFrame;
+  
   game_controller_input Controllers[5];
+
+  bool32 ExcutableReloaded;
 };
 
 inline game_controller_input *GetController(game_input *Input, int ControllerIndex)

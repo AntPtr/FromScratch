@@ -183,7 +183,7 @@ inline real32 DotProduct(v2 A, v2 B)
   return Result;
 }
 
-inline real32 LenghtSq(v2 A)
+inline real32 LengthSq(v2 A)
 {
   real32 Result;
   Result = DotProduct(A, A);
@@ -192,7 +192,7 @@ inline real32 LenghtSq(v2 A)
 
 inline real32 Length(v2 A)
 {
-  real32 Result = SquareRoot(LenghtSq(A));
+  real32 Result = SquareRoot(LengthSq(A));
   return Result;
 }
 

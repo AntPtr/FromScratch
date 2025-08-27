@@ -78,11 +78,14 @@ inline world_chunk *GetWorldChunk(world *World, int32 ChunkX, int32 ChunkY, int3
     {
       break;
     }
-    if(Arena && (Chunk->ChunkX != TILE_CHUNK_UNITIALIZED)  && (!Chunk->NextInHash))
+    if(Arena && (Chunk->ChunkX != TILE_CHUNK_UNITIALIZED) && (!Chunk->NextInHash))
     {
       Chunk->NextInHash = PushStruct(Arena, world_chunk);
-      Chunk->ChunkX = 0;
       Chunk = Chunk->NextInHash;
+      Chunk->ChunkX = ChunkX;
+      Chunk->ChunkY = ChunkY;
+      Chunk->ChunkZ = ChunkZ;    
+      break;
     }
     if(Arena && Chunk->ChunkX == TILE_CHUNK_UNITIALIZED)
     {
@@ -233,11 +236,11 @@ inline void ChangeEntityLocationRaw(memory_arena *Arena, world *World, uint32 Lo
         world_entity_block *OldBlock = World->FirstFree;
         if(OldBlock)
         {
-      	World->FirstFree = OldBlock->NextBlock;
+	  World->FirstFree = OldBlock->NextBlock;
         }
         else
         {
-      	OldBlock = PushStruct(Arena, world_entity_block);
+	  OldBlock = PushStruct(Arena, world_entity_block);
         }
         *OldBlock = *Block;
         Block->NextBlock = OldBlock;
