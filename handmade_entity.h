@@ -31,9 +31,15 @@ inline bool32 IsSet(sim_entity *Entity, uint32 Flags)
   return Result;
 }
 
+internal v3 GetEntityGroundPoint(sim_entity *Entity, v3 ForEntity)
+{
+  v3 Result = ForEntity;
+  return Result;
+}
+
 internal v3 GetEntityGroundPoint(sim_entity *Entity)
 {
-  v3 Result = Entity->P;
+  v3 Result = GetEntityGroundPoint(Entity, Entity->P);
   return Result;
 }
 

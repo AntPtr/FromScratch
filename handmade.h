@@ -66,6 +66,7 @@ typedef double real64;
 #define Assert(Expr)
 #endif
 #define InvalidCodePath Assert(!"InvalidCodePath")
+#define InvalidDefaultCase default: {InvalidCodePath;} break
 
 struct thread_context
 {
@@ -210,15 +211,6 @@ struct low_entity
   world_position P;
 };
 
-struct entity_visible_piece
-{
-  loaded_bitmap *Bitmap;
-  v2 Offset;
-  real32 OffsetZ;
-  real32 R, G, B, A;
-  v2 Dim;
-};
-
 struct controlled_hero
 {
   uint32 EntityIndex;
@@ -238,8 +230,8 @@ struct pairwise_collision_rule
 
 struct ground_buffer
 {
-  void *Memory;
   world_position P;
+  loaded_bitmap Bitmap;
 };
 
 struct game_state
@@ -290,13 +282,6 @@ struct transient_state
   uint32 GroundBufferCount;
   loaded_bitmap GroundBitmapTemplate;
   ground_buffer *GroundBuffers;
-};
-
-struct entity_visible_piece_group
-{
-  game_state *GameState;
-  uint32 Count;
-  entity_visible_piece Pieces[32];
 };
 
 struct game_memory
