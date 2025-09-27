@@ -48,6 +48,18 @@ inline real32 AbsoluteValue(real32 Real32)
   return Result;
 }
 
+inline real32 Sin(real32 Angle)
+{
+  real32 Result = sinf(Angle);
+  return Result;
+}
+
+inline real32 Cos(real32 Angle)
+{
+  real32 Result = cosf(Angle);
+  return Result;
+}
+
 inline bitscan_result FindLastSignificantBit (uint32 Value)
 {
   bitscan_result Result = {};

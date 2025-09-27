@@ -46,9 +46,9 @@ internal v3 GetEntityGroundPoint(sim_entity *Entity)
 inline real32 GetStairGroundPoint
 (sim_entity *Entity, v3 AtEntityGroundPoint)
 {
-  rectangle2 RegionRect = RectCentDim(Entity->P.XY, Entity->WalkableDim);
-  v2 Bary = Clamp01(GetBarycentric(RegionRect, AtEntityGroundPoint.XY));
-  real32 Result = Entity->P.Z + Bary.Y*Entity->WalkableHeight;
+  rectangle2 RegionRect = RectCentDim(Entity->P.xy, Entity->WalkableDim);
+  v2 Bary = Clamp01(GetBarycentric(RegionRect, AtEntityGroundPoint.xy));
+  real32 Result = Entity->P.z + Bary.y*Entity->WalkableHeight;
   
   return Result;
 }
