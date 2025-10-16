@@ -1,3 +1,19 @@
+struct bilinear_sample
+{
+  uint32 A, B, C, D;
+};
+
+inline bilinear_sample BilinearSample(loaded_bitmap *Texture, int32 X, int32 Y)
+{
+  bilinear_sample Result;
+  uint8 *TexelPtr = ((uint8 *)Texture->Memory) + Y*Texture->Pitch + X*sizeof(uint32);
+  Result.A = *(uint32 *)(TexelPtr);
+  Result.B = *(uint32 *)(TexelPtr + sizeof(uint32));
+  Result.C = *(uint32 *)(TexelPtr + Texture->Pitch);
+  Result.D = *(uint32 *)(TexelPtr + Texture->Pitch + sizeof(uint32));
+  return Result;
+}
+
 inline v4 SRGB255ToLinear1(v4 C)
 {
   v4 Result;
@@ -7,6 +23,20 @@ inline v4 SRGB255ToLinear1(v4 C)
   Result.g = Square(Inv255*C.g);
   Result.b = Square(Inv255*C.b);
   Result.a = Inv255*C.a;
+
+  return Result;
+}
+
+inline v4 UnscaleAndBiasNormal(v4 Normal)
+{
+  v4 Result;
+  real32 Inv255 = 1.0f / 255.0f;
+  
+  Result.x = -1.0f + 2.0f*(Normal.x*Inv255);
+  Result.y = -1.0f + 2.0f*(Normal.y*Inv255);
+  Result.z = -1.0f + 2.0f*(Normal.z*Inv255);
+
+  Result.w = Normal.w*Inv255;
 
   return Result;
 }
@@ -24,8 +54,41 @@ inline v4 Linear1ToSRGB255(v4 C)
   return Result;
 }
 
-internal void DrawRectangle(loaded_bitmap *Buffer, v2 vMin, v2 vMax, real32 R, real32 G, real32 B, real32 A = 1.0f)
+inline v4 Unpack4Bytes(uint32 Value)
 {
+  v4 Result;
+  Result = v4{(real32)((Value >> 16) & 0xFF),
+	      (real32)((Value >> 8) & 0xFF),
+	      (real32)((Value >> 0) & 0xFF),
+	      (real32)((Value >> 24) & 0xFF)};
+
+  return Result;
+}
+
+inline v4 SRGBBilinearBlend(bilinear_sample TexelSample, real32 fX, real32 fY)
+{
+  v4 TexelA = Unpack4Bytes(TexelSample.A);		
+  v4 TexelB = Unpack4Bytes(TexelSample.B);
+  v4 TexelC = Unpack4Bytes(TexelSample.C); 		
+  v4 TexelD = Unpack4Bytes(TexelSample.D);
+
+  TexelA = SRGB255ToLinear1(TexelA);
+  TexelB = SRGB255ToLinear1(TexelB);
+  TexelC = SRGB255ToLinear1(TexelC);
+  TexelD = SRGB255ToLinear1(TexelD);
+
+  v4 Texel = Lerp(Lerp(TexelA, fX, TexelB), fY, Lerp(TexelC, fX, TexelD));
+
+  return Texel;
+}
+
+internal void DrawRectangle(loaded_bitmap *Buffer, v2 vMin, v2 vMax, v4 Color)
+{
+  real32 R = Color.r;
+  real32 G = Color.g;
+  real32 B = Color.b;
+  real32 A = Color.a;
+  
   int32 MinX = RoundReal32ToInt32(vMin.x);
   int32 MaxX = RoundReal32ToInt32(vMax.x);
   int32 MinY = RoundReal32ToInt32(vMin.y);
@@ -48,7 +111,7 @@ internal void DrawRectangle(loaded_bitmap *Buffer, v2 vMin, v2 vMax, real32 R, r
     MaxY = Buffer->Height;
   }
  
-  uint32 Color = (uint32)(RoundReal32ToUInt32(255 * A) << 24 |
+  uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * A) << 24 |
 			  RoundReal32ToUInt32(255 * R) << 16 |
 			  RoundReal32ToUInt32(255 * G) << 8 |
 			  RoundReal32ToUInt32(255 *B) << 0);
@@ -60,13 +123,47 @@ internal void DrawRectangle(loaded_bitmap *Buffer, v2 vMin, v2 vMax, real32 R, r
     uint32 *Pixel = (uint32 *)Row;
     for(int X = MinX; X < MaxX; ++X)
     {
-      *Pixel++ = Color;
+      *Pixel++ = Color32;
     }
     Row += Buffer->Pitch;
   }
 }
 
-internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color, loaded_bitmap *Texture)
+inline v3 SampleFromEnvMap(v2 ScreenSpaceUV, v3 SampleDirection, real32 Roughness, environment_map *Map)
+{
+  uint32 LODIndex = (uint32)(Roughness*((real32)ArrayCount(Map->LOD) - 1) + 0.5f);
+  Assert(LODIndex < ArrayCount(Map->LOD));
+  loaded_bitmap *LOD = &Map->LOD[LODIndex];
+
+  Assert(SampleDirection.y > 0.0f);
+
+  real32 DistanceFromMapInZ = 1.0f;
+  real32 UVPerMeter = 0.01f;
+  real32 C = (DistanceFromMapInZ*UVPerMeter) / SampleDirection.y;
+  v2 Offset = C * v2{SampleDirection.x, SampleDirection.z};
+  v2 UV = ScreenSpaceUV + Offset;
+
+  UV.x = Clamp01(UV.x);
+  UV.y = Clamp01(UV.y);
+  
+  real32 tX = ((UV.x*(real32)(LOD->Width - 2)));
+  real32 tY = ((UV.y*(real32)(LOD->Height - 2)));
+  
+  int32 X = (int32)tX;
+  int32 Y = (int32)tY;
+
+  real32 fX = tX - (real32)X;
+  real32 fY = tY - (real32)Y;
+
+  bilinear_sample Sample = BilinearSample(LOD, X, Y);
+  v3 Result =  SRGBBilinearBlend(Sample, fX, fY).xyz;
+  
+  return Result;
+}
+
+internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
+				loaded_bitmap *Texture, loaded_bitmap *NormalMap,
+				environment_map *Top, environment_map *Middle, environment_map *Bottom)
 {
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
 			    RoundReal32ToUInt32(255 * Color.r) << 16 |
@@ -83,6 +180,9 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
   int YMin = HeightMax;
   int YMax = 0;
 
+  real32 InvWidthMax = 1.0f / (real32)WidthMax;
+  real32 InvHeightMax = 1.0f / (real32)HeightMax;
+
   real32 InvXAxisLengthSq = 1.0f / LengthSq(XAxis);
   real32 InvYAxisLengthSq = 1.0f / LengthSq(YAxis);
 
@@ -97,6 +197,7 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
     int FloorY = FloorReal32ToInt32(P[Index].y);
     int CeilY = CeilReal32ToInt32(P[Index].y);
 
+    
     if(XMin > FloorX) {XMin = FloorX;}
     if(XMax < CeilX) {XMax = CeilX;}
     if(YMin > FloorY) {YMin = FloorY;}
@@ -130,6 +231,8 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 
 	real32 tX = 1.0f + ((U*(real32)(Texture->Width - 3)) + 0.5f);
 	real32 tY = 1.0f + ((V*(real32)(Texture->Height - 3)) + 0.5f);
+
+	v2 ScreenSpaceUV = v2{InvWidthMax*(real32)X, InvHeightMax*(real32)Y};
 	
 	int32 XMap = (int32)tX;
 	int32 YMap = (int32)tY;
@@ -137,43 +240,65 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 	real32 fX = tX - (real32)XMap;
 	real32 fY = tY - (real32)YMap;
 
-	uint8 *TexelPtr = ((uint8 *)Texture->Memory) + YMap*Texture->Pitch + XMap*sizeof(uint32);
-	uint32 TexelPtrA = *(uint32 *)(TexelPtr);
-	uint32 TexelPtrB = *(uint32 *)(TexelPtr + sizeof(uint32));
-	uint32 TexelPtrC = *(uint32 *)(TexelPtr + Texture->Pitch);
-	uint32 TexelPtrD = *(uint32 *)(TexelPtr + Texture->Pitch + sizeof(uint32));
-	
-        v4 TexelA = v4{(real32)((TexelPtrA >> 16) & 0xFF),
-		       (real32)((TexelPtrA >> 8) & 0xFF),
-		       (real32)((TexelPtrA >> 0) & 0xFF),
-		       (real32)((TexelPtrA >> 24) & 0xFF)};
-		
-        v4 TexelB = v4{(real32)((TexelPtrB >> 16) & 0xFF),
-		       (real32)((TexelPtrB >> 8) & 0xFF),
-		       (real32)((TexelPtrB >> 0) & 0xFF),
-		       (real32)((TexelPtrB >> 24) & 0xFF)};
-		
-        v4 TexelC = v4{(real32)((TexelPtrC >> 16) & 0xFF),
-		       (real32)((TexelPtrC >> 8) & 0xFF),
-		       (real32)((TexelPtrC >> 0) & 0xFF),
-		       (real32)((TexelPtrC >> 24) & 0xFF)};
-		
-        v4 TexelD = v4{(real32)((TexelPtrD >> 16) & 0xFF),
-		       (real32)((TexelPtrD >> 8) & 0xFF),
-		       (real32)((TexelPtrD >> 0) & 0xFF),
-		       (real32)((TexelPtrD >> 24) & 0xFF)};
+	bilinear_sample TexelSample = BilinearSample(Texture, XMap, YMap);
 
-	TexelA = SRGB255ToLinear1(TexelA);
-	TexelB = SRGB255ToLinear1(TexelB);
-	TexelC = SRGB255ToLinear1(TexelC);
-	TexelD = SRGB255ToLinear1(TexelD);
+	v4 Texel = SRGBBilinearBlend(TexelSample, fX, fY);
 
-	v4 Texel = Lerp(Lerp(TexelA, fX, TexelB), fY, Lerp(TexelC, fX, TexelD));
-	
+	if(NormalMap)
+	{
+	  bilinear_sample NormalSample = BilinearSample(NormalMap, XMap, YMap);
+	  
+          v4 NormalA = Unpack4Bytes(NormalSample.A);		
+          v4 NormalB = Unpack4Bytes(NormalSample.B);
+          v4 NormalC = Unpack4Bytes(NormalSample.C); 		
+          v4 NormalD = Unpack4Bytes(NormalSample.D);
+	  
+	  v4 Normal = Lerp(Lerp(NormalA, fX, NormalB), fY, Lerp(NormalC, fX, NormalD));
+
+	  Normal = UnscaleAndBiasNormal(Normal);
+	  Normal.xyz = Normalize(Normal.xyz);
+
+	  v3 BounceDirection = 2.0f*Normal.z*Normal.xyz;
+	  BounceDirection.z -= 1.0f;
+
+#if 1
+	  environment_map *FarMap = 0;
+	  real32 tEnvMap = BounceDirection.y;
+	  real32 tFarMap = 0.0f;
+	  if(tEnvMap < -0.5f)
+	  {
+	    FarMap = Bottom;
+	    tFarMap = -1.0f - 2.0f*tEnvMap;
+	    BounceDirection.y = -BounceDirection.y; 
+	  }
+	  else if(tEnvMap > 0.5f)
+	  {
+	    FarMap = Top;
+	    tFarMap = 2.0f*(tEnvMap - 0.5f);
+	  }
+	  
+	  v3 LigthColor = v3{0, 0, 0}; //SampleFromEnvMap(ScreenSpaceUV, Normal.xyz, Normal.w, Middle);
+	  if(FarMap)
+	  {
+	    v3 FarMapColor = SampleFromEnvMap(ScreenSpaceUV, BounceDirection, Normal.w, FarMap);
+	    LigthColor = Lerp(LigthColor, tFarMap, FarMapColor);
+	  }
+
+	  Texel.rgb = Texel.rgb + Texel.a*LigthColor;
+#else
+	  Texel.rgb = v3{0.5f, 0.5f, 0.5f} + 0.5f*Normal.rgb;
+	  Texel.a = 1.0f;
+#endif
+	}
         Texel.r *= Color.r;
 	Texel.g *= Color.g;
 	Texel.b *= Color.b;
 	Texel.a *= Color.a;
+
+	Texel.r = Clamp01(Texel.r);
+	Texel.g = Clamp01(Texel.g);
+	Texel.b = Clamp01(Texel.b);
+
 
 	v4 Dest = {(real32)((*Pixel >> 16) & 0xFF),
 		   (real32)((*Pixel >> 8) & 0xFF),
@@ -208,11 +333,11 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 internal void DrawRectangleOutline(loaded_bitmap* Buffer, v2 vMin, v2 vMax, v3 Color, real32 T = 2.0f)
 {
   //Top and Bottom
-  DrawRectangle(Buffer, v2{vMin.x - T, vMin.y - T}, v2{vMax.x + T, vMin.y + T}, Color.r, Color.g, Color.b);
-  DrawRectangle(Buffer, v2{vMin.x - T, vMax.y - T}, v2{vMax.x + T, vMax.y + T}, Color.r, Color.g, Color.b);
+  DrawRectangle(Buffer, v2{vMin.x - T, vMin.y - T}, v2{vMax.x + T, vMin.y + T}, ToV4(Color, 1.0f));
+  DrawRectangle(Buffer, v2{vMin.x - T, vMax.y - T}, v2{vMax.x + T, vMax.y + T}, ToV4(Color, 1.0f));
   //Left and Right
-  DrawRectangle(Buffer, v2{vMin.x - T, vMin.y - T}, v2{vMin.x + T, vMax.y + T}, Color.r, Color.g, Color.b);
-  DrawRectangle(Buffer, v2{vMax.x - T, vMin.y - T}, v2{vMax.x + T, vMax.y + T}, Color.r, Color.g, Color.b);
+  DrawRectangle(Buffer, v2{vMin.x - T, vMin.y - T}, v2{vMin.x + T, vMax.y + T}, ToV4(Color, 1.0f));
+  DrawRectangle(Buffer, v2{vMax.x - T, vMin.y - T}, v2{vMax.x + T, vMax.y + T}, ToV4(Color, 1.0f));
 }
 
 
@@ -341,7 +466,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      {
        render_entry_clear *Entry = (render_entry_clear *)Data;
 
-       DrawRectangle(OutputTarget, v2{0, 0}, v2{(real32)OutputTarget->Width, (real32)OutputTarget->Height}, Entry->Color.r, Entry->Color.g, Entry->Color.b, Entry->Color.a);
+       DrawRectangle(OutputTarget, v2{0, 0}, v2{(real32)OutputTarget->Width, (real32)OutputTarget->Height}, Entry->Color);
        
        BaseAdress += sizeof(render_entry_clear);
      } break;
@@ -349,10 +474,11 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      case RenderGroupEntryType_render_entry_bitmap:
      {
        render_entry_bitmap *Entry = (render_entry_bitmap *)Data;
+#if 0
        v2 P =  GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenCenter);
        //Assert(Entry->Bitmap);
        DrawBitmap(OutputTarget, Entry->Bitmap, P.x, P.y);
-       
+#endif  
        BaseAdress += sizeof(render_entry_bitmap);
      } break;
        
@@ -360,7 +486,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      {
        render_entry_rectangle *Entry = (render_entry_rectangle *)Data;
        v2 P =  GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenCenter);
-       DrawRectangle(OutputTarget, P, P + Entry->Dim, Entry->R, Entry->G, Entry->B);
+       DrawRectangle(OutputTarget, P, P + Entry->Dim, Entry->Color);
 
        BaseAdress += sizeof(render_entry_rectangle);
      } break;
@@ -370,19 +496,21 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
        render_entry_coordinate_system *Entry = (render_entry_coordinate_system *)Data;
        v2 Dim = {4, 4};
        v2 P = Entry->Origin;
-       DrawRectangle(OutputTarget, P - Dim, P + Dim, Entry->Color.r, Entry->Color.g, Entry->Color.b);
+       DrawRectangle(OutputTarget, P - Dim, P + Dim, Entry->Color);
 
        P = Entry->Origin + Entry->XAxis;
-       DrawRectangle(OutputTarget, P - Dim, P + Dim, Entry->Color.r, Entry->Color.g, Entry->Color.b);
+       DrawRectangle(OutputTarget, P - Dim, P + Dim, Entry->Color);
 
        P = Entry->Origin + Entry->YAxis;
-       DrawRectangle(OutputTarget, P - Dim, P + Dim, Entry->Color.r, Entry->Color.g, Entry->Color.b);
+       DrawRectangle(OutputTarget, P - Dim, P + Dim, Entry->Color);
 
        v2 Point = Entry->Point;
        Point = Entry->Origin + Point.x*Entry->XAxis + Point.y*Entry->YAxis;
 
        P = Entry->Origin + Entry->YAxis;
-       DrawRectangleSlow(OutputTarget, Entry->Origin, Entry->XAxis, Entry->YAxis, Entry->Color, Entry->Texture);
+       DrawRectangleSlow(OutputTarget, Entry->Origin, Entry->XAxis, Entry->YAxis,
+			 Entry->Color, Entry->Texture, Entry->NormalMap,
+			 Entry->Top, Entry->Middle, Entry->Bottom);
 
        BaseAdress += sizeof(render_entry_coordinate_system);
      } break;
@@ -424,10 +552,7 @@ inline void PushPiece(render_group *Group, loaded_bitmap *Bitmap, v2 Offset,
     Piece->EntityBasis.Basis = Group->DefaultBasis;
     Piece->EntityBasis.Offset = Group->MetersToPixel*v2{Offset.x, -Offset.y} - Align;
     Piece->EntityBasis.OffsetZ = OffsetZ;
-    Piece->R = Color.r;
-    Piece->G = Color.g;
-    Piece->B = Color.g;
-    Piece->A = Color.a;
+    Piece->Color = Color;
   }
 }
 
@@ -446,10 +571,7 @@ inline void PushRect(render_group *Group, v2 Offset, real32 OffsetZ, v2 Dim, v4 
     Piece->EntityBasis.Basis = Group->DefaultBasis;
     Piece->EntityBasis.Offset = Group->MetersToPixel*v2{Offset.x, -Offset.y} - HalfDim;
     Piece->EntityBasis.OffsetZ = OffsetZ;
-    Piece->R = Color.r;
-    Piece->G = Color.g;
-    Piece->B = Color.b;
-    Piece->A = Color.a;
+    Piece->Color = Color;
     Piece->Dim = Group->MetersToPixel*Dim;
   }
 }
@@ -474,7 +596,9 @@ inline void Clear(render_group *Group, v4 Color)
   }
 }
 
-inline render_entry_coordinate_system *CoordinateSystem(render_group *Group, v2 Origin, v2 XAxis, v2 YAxis, v4 Color, loaded_bitmap *Texture)
+inline render_entry_coordinate_system *CoordinateSystem(render_group *Group, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
+							loaded_bitmap *Texture, loaded_bitmap *NormalMap,
+							environment_map *Top, environment_map *Middle, environment_map *Bottom) 
 {
   render_entry_coordinate_system *Piece = PushRenderElement(Group, render_entry_coordinate_system);
   if(Piece)
@@ -484,6 +608,10 @@ inline render_entry_coordinate_system *CoordinateSystem(render_group *Group, v2 
     Piece->YAxis = YAxis;
     Piece->Color = Color;
     Piece->Texture = Texture;
+    Piece->NormalMap = NormalMap;
+    Piece->Top = Top;
+    Piece->Middle = Middle;
+    Piece->Bottom = Bottom;
   }
 
   return Piece;

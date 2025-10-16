@@ -511,6 +511,50 @@ internal void ClearBitmap(loaded_bitmap *Bitmap)
   }
 }
 
+internal void MakeSphereNormalMap(loaded_bitmap *Bitmap, real32  Roughness)
+{
+  real32 InvHeight = 1.0f / (real32)(Bitmap->Height - 1);
+  real32 InvWidth = 1.0f / (real32)(Bitmap->Width - 1);
+
+  uint8 *Row = (uint8 *)Bitmap->Memory;
+
+  for(int32 Y = 0; Y < Bitmap->Height; ++Y)
+  {
+    uint32 *Pixel = (uint32 *)Row; 
+    for(int32 X = 0; X < Bitmap->Width; ++X)
+    {
+      
+      v2 BitmapUV = v2{InvWidth*(real32)X, InvHeight*(real32)Y};
+
+      real32 Nx = 2.0f*BitmapUV.x - 1.0f;
+      real32 Ny = 2.0f*BitmapUV.y - 1.0f;
+
+      v3 Normal = {0, 0, 1};
+      real32 Nz = 0.0f;
+      real32 RootTerm = 1.0f - Nx*Nx - Ny*Ny;
+      if(RootTerm >= 0.0f)
+      {
+	Nz = SquareRoot(RootTerm);
+	Normal = v3{Nx, Ny, Nz};
+      }
+
+
+      v4 Color = v4{255.0f*(0.5f*(Normal.x + 1.0f)),
+		    255.0f*(0.5f*(Normal.y + 1.0f)),
+		    255.0f*(0.5f*(Normal.z + 1.0f)),
+		    255.0f*Roughness};
+
+      
+      *Pixel++ = (((uint32)(Color.a + 0.5f) << 24) |
+		  ((uint32)(Color.r + 0.5f) << 16) |
+		  ((uint32)(Color.g + 0.5f) << 8) |
+		  ((uint32)(Color.b + 0.5f) << 0));
+    }
+    Row += Bitmap->Pitch;
+  }
+
+}
+
 internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 Height, bool32 ClearToZero = true)
 {
   loaded_bitmap Result;
@@ -786,8 +830,27 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
     {
       ground_buffer *GroundBuffer = TranState->GroundBuffers + GroundBufferIndex;
-      GroundBuffer->Bitmap = MakeEmptyBitmap(&TranState->TranArena,  GroundBufferWidth, GroundBufferHeight, false);
+      GroundBuffer->Bitmap = MakeEmptyBitmap(&TranState->TranArena, GroundBufferWidth, GroundBufferHeight, false);
       GroundBuffer->P = NullPosition();
+    }
+    GameState->TestDiffuse = MakeEmptyBitmap(&TranState->TranArena, 256, 256, 0);
+    DrawRectangle(&GameState->TestDiffuse, v2{0, 0}, V2i(GameState->TestDiffuse.Width, GameState->TestDiffuse.Height), v4{0.4f, 0.4f, 0.4f, 1.0f});
+    GameState->TestNormal = MakeEmptyBitmap(&TranState->TranArena, GameState->TestDiffuse.Width, GameState->TestDiffuse.Height, 0);
+    MakeSphereNormalMap(&GameState->TestNormal, 0.0f);
+
+    TranState->EnvMapWidth = 512;
+    TranState->EnvMapHeight = 256;
+    for(uint32 MapIndex = 0; MapIndex < ArrayCount(TranState->EnvMaps); ++MapIndex)
+    {
+      environment_map *Map = TranState->EnvMaps + MapIndex;
+      uint32 Width = TranState->EnvMapWidth;
+      uint32 Height = TranState->EnvMapHeight;
+      for(uint32 LODIndex = 0; LODIndex < ArrayCount(Map->LOD); ++LODIndex)
+      {
+	Map->LOD[LODIndex] = MakeEmptyBitmap(&TranState->TranArena, Width, Height, true);
+	Width >>= 1;
+	Height >>= 1;
+      }
     }
     
     TranState->Initialized = true;
@@ -1182,15 +1245,62 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   GameState->Time += Input->dtForFrame;
   real32 Angle = GameState->Time;
+  real32 Disp = Cos(Angle)*50.0f;
   v2 Origin = ScreenCenter;
-#if 1
+#if 0
   v2 XAxis = 100*v2{Cos(Angle*2.0f), Sin(Angle*2.0f)};
   v2 YAxis = v2{-XAxis.y, XAxis.x};
 #else
   v2 XAxis = 100*v2{1, 0};
   v2 YAxis = 100*v2{0, 1};
 #endif
-  render_entry_coordinate_system* Entry = CoordinateSystem(RenderGroup, Origin - 0.5f*XAxis - 0.5f*YAxis, XAxis, YAxis, v4{1, 1, 1, 1}, &GameState->Sword);
+  v3 MapColor[] = {
+    {1, 0, 0},
+    {0, 1, 0},
+    {0, 0, 1}
+  };
+
+  int32 CheckerWidth = 16;
+  int32 CheckerHeight = 16;
+  
+  for(uint32 MapIndex = 0; MapIndex < ArrayCount(TranState->EnvMaps); ++MapIndex)
+  {
+    environment_map *Map = TranState->EnvMaps + MapIndex;
+    loaded_bitmap *LOD = Map->LOD + 0;
+    bool32 RowCheckerOn = false;
+    for(int32 Y = 0; Y < LOD->Height; Y += CheckerHeight)
+    {
+      bool32 CheckerOn = RowCheckerOn;
+      for(int32 X = 0; X < LOD->Width; X += CheckerWidth)
+      {
+	v4 Color = CheckerOn ? ToV4(MapColor[MapIndex], 1.0f) : v4{0, 0, 0, 1};
+	v2 MinP = V2i(X, Y);
+	v2 MaxP = MinP + V2i(CheckerWidth, CheckerHeight);
+	DrawRectangle(LOD, MinP, MaxP, Color);
+	CheckerOn = !CheckerOn;
+      }
+      RowCheckerOn = !RowCheckerOn;
+    }
+     
+  }
+  
+  render_entry_coordinate_system* Entry = CoordinateSystem(RenderGroup, v2{Disp, 0} + Origin - 0.5f*XAxis - 0.5f*YAxis, XAxis, YAxis,
+							   v4{1, 1, 1, 1}, &GameState->TestDiffuse,
+							   &GameState->TestNormal,
+							   TranState->EnvMaps + 2, TranState->EnvMaps + 1, TranState->EnvMaps + 0);
+
+  v2 MapP = v2{0.0f, 0.0f};
+  for(uint32 MapIndex = 0; MapIndex < ArrayCount(TranState->EnvMaps); ++MapIndex)
+  {
+    environment_map *Map = TranState->EnvMaps + MapIndex;
+    loaded_bitmap *LOD = Map->LOD + 0;
+
+    XAxis = 0.5f*v2{(real32)LOD->Width, 0.0f};
+    YAxis = 0.5f*v2{0.0f, (real32)LOD->Height};
+    CoordinateSystem(RenderGroup, MapP, XAxis, YAxis, v4{1, 1, 1, 1}, LOD, 0, 0, 0, 0);
+    MapP += YAxis + v2{0.0f, 6.0f};
+    
+  }
 
   real32 X = Cos(Angle);
   if(X > 1 || X < 0)

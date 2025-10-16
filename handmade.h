@@ -57,6 +57,7 @@ typedef double real64;
 #include "handmade_world.h"
 #include "handmade_sim_region.h"
 #include "handmade_entity.h"
+#include "handmade_render_group.h"
 
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
 
@@ -190,13 +191,13 @@ struct memory_arena
 };
 
 #define BITMAP_BYTES_PER_PIXEL 4
-struct loaded_bitmap
+/*struct loaded_bitmap
 {
   int32 Width;
   int32 Height;
   void *Memory;
   int32 Pitch;
-};
+};*/
 
 struct wizard
 {
@@ -274,6 +275,9 @@ struct game_state
   sim_entity_collision_volume_group *FamiliarCollision;
   sim_entity_collision_volume_group *StandardRoomCollision;
 
+  loaded_bitmap TestDiffuse;
+  loaded_bitmap TestNormal;
+  
   real32 Time;
 };
 
@@ -284,6 +288,10 @@ struct transient_state
   uint32 GroundBufferCount;
   loaded_bitmap GroundBitmapTemplate;
   ground_buffer *GroundBuffers;
+
+  uint32 EnvMapWidth;
+  uint32 EnvMapHeight;
+  environment_map EnvMaps[3];
 };
 
 struct game_memory

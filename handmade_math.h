@@ -49,7 +49,15 @@ struct v4
   {
     struct
     {
-      real32 x, y, z, w;
+      union
+      {
+	v3 xyz;
+	struct
+	{
+	  real32 x, y, z;
+	};
+      };
+      real32 w;
     };
     struct
     {
@@ -168,6 +176,7 @@ inline real32 Length(v3 A)
   return Result;
 }
 
+
 ////
 ////
 
@@ -192,6 +201,13 @@ inline real32 DotProduct(v2 A, v2 B)
 }
 
 inline real32 LengthSq(v2 A)
+{
+  real32 Result;
+  Result = DotProduct(A, A);
+  return Result;
+}
+
+inline real32 LengthSq(v3 A)
 {
   real32 Result;
   Result = DotProduct(A, A);
@@ -387,7 +403,14 @@ inline v2 Clamp01(v2 Value)
   return Result;
 }
 
+inline v3 ToV3(v2 XY, real32 Z)
+{
+  v3 Result;
+  Result.xy = XY;
+  Result.z = Z;
 
+  return Result;
+}
 
 
 //
@@ -548,6 +571,13 @@ inline v2 V2u(uint32 X, uint32 Y)
   return Result;
 }
 
+inline v3 Normalize(v3 A)
+{
+  v3 Result = A*(1.0f / Length(A));
+
+  return Result;
+}
+
 //V4 operators
 v4 operator+(v4 A, v4 B)
 {
@@ -610,6 +640,21 @@ v4 &v4::operator+=(v4 A)
 inline v4 Lerp(v4 A, real32 t, v4 B)
 {
   v4 Result = (1.0f - t)*A + t*B;
+  return Result;
+}
+
+inline v3 Lerp(v3 A, real32 t, v3 B)
+{
+  v3 Result = (1.0f - t)*A + t*B;
+  return Result;
+}
+
+inline v4 ToV4(v3 XYZ, real32 W)
+{
+  v4 Result;
+  Result.xyz = XYZ;
+  Result.w = W;
+
   return Result;
 }
 
