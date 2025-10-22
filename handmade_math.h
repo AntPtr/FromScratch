@@ -71,6 +71,24 @@ struct v4
       };
       real32 a;
     };
+    struct
+    {
+      v2 xy;
+      real32 Ignored_0;
+      real32 Ignored_1;
+    };
+    struct
+    {
+      real32 Ignored_2;
+      v2 yz;
+      real32 Ignored_3;
+    };
+    struct
+    {
+      real32 Ignored_4;
+      real32 Ignored_5;
+      v2 zw;
+    };
     real32 E[4];
   };
   v4 &operator*=(real32 A);

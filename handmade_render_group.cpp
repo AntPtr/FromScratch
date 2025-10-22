@@ -129,15 +129,14 @@ internal void DrawRectangle(loaded_bitmap *Buffer, v2 vMin, v2 vMax, v4 Color)
   }
 }
 
-inline v3 SampleFromEnvMap(v2 ScreenSpaceUV, v3 SampleDirection, real32 Roughness, environment_map *Map)
+inline v3 SampleFromEnvMap(v2 ScreenSpaceUV, v3 SampleDirection, real32 Roughness, environment_map *Map, real32 DistanceFromMapInZ)
 {
   uint32 LODIndex = (uint32)(Roughness*((real32)ArrayCount(Map->LOD) - 1) + 0.5f);
   Assert(LODIndex < ArrayCount(Map->LOD));
   loaded_bitmap *LOD = &Map->LOD[LODIndex];
 
-  Assert(SampleDirection.y > 0.0f);
+  //Assert(SampleDirection.y > 0.0f);
 
-  real32 DistanceFromMapInZ = 1.0f;
   real32 UVPerMeter = 0.01f;
   real32 C = (DistanceFromMapInZ*UVPerMeter) / SampleDirection.y;
   v2 Offset = C * v2{SampleDirection.x, SampleDirection.z};
@@ -163,7 +162,7 @@ inline v3 SampleFromEnvMap(v2 ScreenSpaceUV, v3 SampleDirection, real32 Roughnes
 
 internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
 				loaded_bitmap *Texture, loaded_bitmap *NormalMap,
-				environment_map *Top, environment_map *Middle, environment_map *Bottom)
+				environment_map *Top, environment_map *Middle, environment_map *Bottom, real32 PixelsToMeter)
 {
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
 			    RoundReal32ToUInt32(255 * Color.r) << 16 |
@@ -182,6 +181,18 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 
   real32 InvWidthMax = 1.0f / (real32)WidthMax;
   real32 InvHeightMax = 1.0f / (real32)HeightMax;
+
+  real32 OriginZ = 0.0f;
+  real32 OriginY = (Origin + 0.5f*XAxis + 0.5f*YAxis).y;
+  real32 FixedCastY = InvHeightMax*OriginY;
+  
+  real32 XAxisLength = Length(XAxis);
+  real32 YAxisLength = Length(YAxis);
+
+  v2 NxAxis = (YAxisLength / XAxisLength)*XAxis;
+  v2 NyAxis = (XAxisLength / YAxisLength)*YAxis;
+
+  real32 NzScale = 0.5f*(XAxisLength + YAxisLength);
 
   real32 InvXAxisLengthSq = 1.0f / LengthSq(XAxis);
   real32 InvYAxisLengthSq = 1.0f / LengthSq(YAxis);
@@ -232,7 +243,9 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 	real32 tX = 1.0f + ((U*(real32)(Texture->Width - 3)) + 0.5f);
 	real32 tY = 1.0f + ((V*(real32)(Texture->Height - 3)) + 0.5f);
 
-	v2 ScreenSpaceUV = v2{InvWidthMax*(real32)X, InvHeightMax*(real32)Y};
+	v2 ScreenSpaceUV = v2{InvWidthMax*(real32)X, FixedCastY};
+
+	real32 ZDiff = PixelsToMeter*((real32)Y - OriginY);
 	
 	int32 XMap = (int32)tX;
 	int32 YMap = (int32)tY;
@@ -254,14 +267,18 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
           v4 NormalD = Unpack4Bytes(NormalSample.D);
 	  
 	  v4 Normal = Lerp(Lerp(NormalA, fX, NormalB), fY, Lerp(NormalC, fX, NormalD));
-
+	  real32 Pz = OriginZ + ZDiff;
+	  real32 MapZ = 2.0f;
+	  
 	  Normal = UnscaleAndBiasNormal(Normal);
+	  Normal.xy = Normal.x*NxAxis + Normal.y*NyAxis;
+	  Normal.z *= NzScale;
 	  Normal.xyz = Normalize(Normal.xyz);
 
 	  v3 BounceDirection = 2.0f*Normal.z*Normal.xyz;
 	  BounceDirection.z -= 1.0f;
+	  BounceDirection.z = -BounceDirection.z;
 
-#if 1
 	  environment_map *FarMap = 0;
 	  real32 tEnvMap = BounceDirection.y;
 	  real32 tFarMap = 0.0f;
@@ -269,26 +286,22 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 	  {
 	    FarMap = Bottom;
 	    tFarMap = -1.0f - 2.0f*tEnvMap;
-	    BounceDirection.y = -BounceDirection.y; 
 	  }
 	  else if(tEnvMap > 0.5f)
 	  {
 	    FarMap = Top;
 	    tFarMap = 2.0f*(tEnvMap - 0.5f);
 	  }
-	  
+
 	  v3 LigthColor = v3{0, 0, 0}; //SampleFromEnvMap(ScreenSpaceUV, Normal.xyz, Normal.w, Middle);
 	  if(FarMap)
 	  {
-	    v3 FarMapColor = SampleFromEnvMap(ScreenSpaceUV, BounceDirection, Normal.w, FarMap);
+	    real32 DistanceFromMapInZ = FarMap->Pz - Pz;
+	    v3 FarMapColor = SampleFromEnvMap(ScreenSpaceUV, BounceDirection, Normal.w, FarMap, DistanceFromMapInZ);
 	    LigthColor = Lerp(LigthColor, tFarMap, FarMapColor);
 	  }
 
 	  Texel.rgb = Texel.rgb + Texel.a*LigthColor;
-#else
-	  Texel.rgb = v3{0.5f, 0.5f, 0.5f} + 0.5f*Normal.rgb;
-	  Texel.a = 1.0f;
-#endif
 	}
         Texel.r *= Color.r;
 	Texel.g *= Color.g;
@@ -510,7 +523,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
        P = Entry->Origin + Entry->YAxis;
        DrawRectangleSlow(OutputTarget, Entry->Origin, Entry->XAxis, Entry->YAxis,
 			 Entry->Color, Entry->Texture, Entry->NormalMap,
-			 Entry->Top, Entry->Middle, Entry->Bottom);
+			 Entry->Top, Entry->Middle, Entry->Bottom, 1.0f / RenderGroup->MetersToPixel);
 
        BaseAdress += sizeof(render_entry_coordinate_system);
      } break;
