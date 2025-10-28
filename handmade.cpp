@@ -172,10 +172,10 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
 
   loaded_bitmap Result = {};
   debug_read_file_result ReadResult = ReadEntireFile(Theard, FileName);
+  bitmap_header *BitMap = (bitmap_header *)ReadResult.Contents;
+  uint32 *Pixel = (uint32 *)((uint8 *)ReadResult.Contents  + BitMap->BitmapOffset);
   if(ReadResult.ContentSize > 0)
   {
-    bitmap_header *BitMap = (bitmap_header *)ReadResult.Contents;
-    uint32 *Pixel = (uint32 *)((uint8 *)ReadResult.Contents  + BitMap->BitmapOffset);
 
     Assert(BitMap->Compression == 3);
     
@@ -220,15 +220,19 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
 			 ((uint32(Texel.b + 0.5f)) << 0));
       }
     }
-    
-    Result.Memory = Pixel;
-    Result.Width = BitMap->Width;
-    Result.Height = BitMap->Height;
-    int32 BytesPerPixel = BITMAP_BYTES_PER_PIXEL;
-    Result.Pitch = -BitMap->Width*BytesPerPixel;
-    Result.Memory = (uint8 *)Result.Memory - Result.Pitch*(Result.Height - 1);
   }
-
+  Result.Memory = Pixel;
+  Result.Width = BitMap->Width;
+  Result.Height = BitMap->Height;
+  
+  int32 BytesPerPixel = BITMAP_BYTES_PER_PIXEL;
+  Result.Pitch = BitMap->Width*BytesPerPixel;
+  
+#if 0
+  Result.Memory = (uint8 *)Result.Memory + Result.Pitch*(Result.Height - 1);
+  Result.Pitch = -BitMap->Width*BytesPerPixel;
+#endif
+  
   return Result;
 }
 
@@ -457,7 +461,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
       int32 ChunkZ = ChunkP->ChunkZ;
       
       random_series Series = Seed(124*ChunkX + 542*ChunkY + 322*ChunkZ);
-      v2 Center = v2{ChunkOffsetX*Width, -ChunkOffsetY*Height};
+      v2 Center = v2{ChunkOffsetX*Width, ChunkOffsetY*Height};
       for(uint32 Grass = 0; Grass < 100; ++Grass)
       {
 	loaded_bitmap *Stamp;
@@ -483,7 +487,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
       int32 ChunkZ = ChunkP->ChunkZ;
       
       random_series Series = Seed(124*ChunkX + 542*ChunkY + 322*ChunkZ);
-      v2 Center = v2{ChunkOffsetX*Width, -ChunkOffsetY*Height};
+      v2 Center = v2{ChunkOffsetX*Width, ChunkOffsetY*Height};
       for(uint32 Grass = 0; Grass < 25; ++Grass)
       {
 	loaded_bitmap *Stamp;
@@ -609,6 +613,12 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
     ClearBitmap(&Result);
   }
   return Result;
+}
+
+inline v2 TopDownAlign(loaded_bitmap *Bitmap, v2 Align)
+{
+  Align.y = (real32)(Bitmap->Height - 1) - Align.y;
+  return Align;
 }
 
 #if 0
@@ -1067,7 +1077,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 		    FillGroundChunk(TranState, GameState, FurthestBuffer, &ChunkCenterP);
 		  }
 		  
-		  PushRectOutline(RenderGroup, RelP.xy,  0.0f, World->ChunkDimInMeters.xy, v4{1.0f, 1.0f, 0.0f, 1.0f});
+		  //PushRectOutline(RenderGroup, RelP.xy,  0.0f, World->ChunkDimInMeters.xy, v4{1.0f, 1.0f, 0.0f, 1.0f});
                 }
             }
         }
@@ -1176,13 +1186,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       		
           //DrawRectangle(DrawBuffer, PlayerLeftTop, PlayerLeftTop + MetersToPixels * PlayerWidthHeigth, 1.0f, 0.0f, 0.0f);
 	loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
-	PushBitmap(RenderGroup, Wizard, v2{0,0}, 0, v2{50, 145});
+	v2 Alignment = TopDownAlign(Wizard, v2{50, 145});
+	PushBitmap(RenderGroup, Wizard, v2{0,0}, 0, Alignment);
 	DrawHitpoints(Entity, RenderGroup);
         } break;
 	
         case EntityType_Wall:
         {
-          PushBitmap(RenderGroup, &GameState->Wall, v2{0,0}, 0, v2{40, 80});
+	  v2 Alignment = TopDownAlign(&GameState->Wall, v2{40, 80});
+          PushBitmap(RenderGroup, &GameState->Wall, v2{0,0}, 0, Alignment);
         } break;
 	
         case EntityType_Monster:
@@ -1193,7 +1205,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  }
 	  else
 	  {
-	    PushBitmap(RenderGroup, &GameState->Monster, v2{0,0}, 0, v2{40, 80});
+	    v2 Alignment = TopDownAlign(&GameState->Monster, v2{40, 80});
+	    PushBitmap(RenderGroup, &GameState->Monster, v2{0,0}, 0, Alignment);
 	    DrawHitpoints(Entity, RenderGroup);
 	  }
         } break;
@@ -1211,7 +1224,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    ClearCollisionRulesFor(GameState, Entity->StorageIndex);
 	    MakeEntityNonSpatial(Entity);
 	  }
-	  PushBitmap(RenderGroup, &GameState->Sword, v2{0,0}, 0, v2{25, 25});
+	  v2 Alignment = TopDownAlign(&GameState->Sword, v2{25, 25});
+	  PushBitmap(RenderGroup, &GameState->Sword, v2{0,0}, 0, Alignment);
         } break;
 	
         case EntityType_Familiar:
@@ -1245,7 +1259,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  MoveSpec.Drag = 8.0f;
 
           loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
-	  PushBitmap(RenderGroup, Wizard, v2{0,0}, 0, v2{50, 145});
+	  v2 Alignment = TopDownAlign(Wizard, v2{50, 145});
+	  PushBitmap(RenderGroup, Wizard, v2{0,0}, 0, Alignment);
         } break;
 	
         case EntityType_Staff:
@@ -1287,6 +1302,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
 
   GameState->Time += Input->dtForFrame;
+#if 0
   real32 Angle = GameState->Time;
   real32 Disp = Cos(Angle)*50.0f;
   v2 Origin = ScreenCenter;
@@ -1358,7 +1374,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     X = 0;
   }
   Entry->Point = v2{X, 0.5f};
-
+#endif
   RenderGroupToOutput(RenderGroup, DrawBuffer);
   
   EndSim(SimRegion, GameState);

@@ -461,7 +461,7 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer ,int Width, i
  
   Buffer->BitMapInfo.bmiHeader.biSize = sizeof(Buffer->BitMapInfo.bmiHeader);
   Buffer->BitMapInfo.bmiHeader.biWidth = Buffer->Width;
-  Buffer->BitMapInfo.bmiHeader.biHeight = -Buffer->Height;
+  Buffer->BitMapInfo.bmiHeader.biHeight = Buffer->Height;
   Buffer->BitMapInfo.bmiHeader.biPlanes = 1;
   Buffer->BitMapInfo.bmiHeader.biBitCount = 32;
   Buffer->BitMapInfo.bmiHeader.biCompression = BI_RGB;
