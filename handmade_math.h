@@ -266,6 +266,17 @@ inline real32 Clamp01(real32 Value)
   return Result;
 }
 
+inline real32 Clamp01MapToRange(real32 Min, real32 t, real32 Max)
+{
+  real32 Result = 0;
+  real32 Range = Max - Min;
+  if(Range != 0)
+  {
+    Result = Clamp01((t - Min)/Range);
+  }
+  return Result;
+}
+
 struct rectangle2
 {
   v2 Min;

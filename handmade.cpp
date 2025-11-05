@@ -167,7 +167,7 @@ struct bitmap_header
 };
 #pragma pack(pop)
 
-internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_entire_file *ReadEntireFile, char *FileName)
+internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_entire_file *ReadEntireFile, char *FileName, int32 AlignX = 0, int32 TopDownAlignY = 0)
 {
 
   loaded_bitmap Result = {};
@@ -220,11 +220,11 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
 			 ((uint32(Texel.b + 0.5f)) << 0));
       }
     }
-  }
-  Result.Memory = Pixel;
+    Result.Memory = Pixel;
   Result.Width = BitMap->Width;
   Result.Height = BitMap->Height;
-  
+  Result.AlignX = AlignX;
+  Result.AlignY = (BitMap->Height - 1) - TopDownAlignY;
   int32 BytesPerPixel = BITMAP_BYTES_PER_PIXEL;
   Result.Pitch = BitMap->Width*BytesPerPixel;
   
@@ -232,6 +232,7 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
   Result.Memory = (uint8 *)Result.Memory + Result.Pitch*(Result.Height - 1);
   Result.Pitch = -BitMap->Width*BytesPerPixel;
 #endif
+  }
   
   return Result;
 }
@@ -411,7 +412,7 @@ inline void DrawHitpoints(sim_entity *Entity, render_group *RenderGroup)
       {
 	Color = v4{0.2f, 0.2f, 0.2f, 1.0f};
       }
-      PushRect(RenderGroup, HitP, 0, HealthDim, Color);
+      PushRect(RenderGroup, ToV3(HitP, 0), HealthDim, Color);
       HitP += dHitP;
     }
   }
@@ -465,7 +466,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
       for(uint32 Grass = 0; Grass < 100; ++Grass)
       {
 	loaded_bitmap *Stamp;
-	Stamp = GameState->Stones + RandomChoice(&Series, ArrayCount(GameState->Stones));
+	Stamp = GameState->Stones /*+RandomChoice(&Series, ArrayCount(GameState->Stones))*/;
 
 	v2 Offset = {RandomUnilateral(&Series)*Width, RandomUnilateral(&Series)*Height};
 
@@ -473,7 +474,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 
 	real32 Radius = 5.0f;
 	v2 P = Center + Offset - BitmapCenter;
-	PushBitmap(RenderGroup, Stamp, P, 0.0f, v2{0, 0});
+	PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f));
       }
     }
   }
@@ -491,14 +492,14 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
       for(uint32 Grass = 0; Grass < 25; ++Grass)
       {
 	loaded_bitmap *Stamp;
-	Stamp = GameState->Grass + RandomChoice(&Series, ArrayCount(GameState->Grass));
+	Stamp = GameState->Grass /*+ RandomChoice(&Series, ArrayCount(GameState->Grass))*/;
 	v2 Offset = {RandomUnilateral(&Series)*Width, RandomUnilateral(&Series)*Height};
 
 	v2 BitmapCenter = 0.5f*V2i(Stamp->Width, Stamp->Height);
 
 	real32 Radius = 5.0f;
 	v2 P = Center + Offset - BitmapCenter;
-	PushBitmap(RenderGroup, Stamp, P, 0.0f, v2{0, 0});
+	PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f));
       }
     }
   }
@@ -669,11 +670,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     InitializeWorld(World, WorldChunkDimInMeters);
 
     GameState->BackGround = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/test_img.bmp");
-    GameState->Wall = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/brick.bmp");
-    GameState->Wizard.Wiz[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage1.bmp");
-    GameState->Wizard.Wiz[1] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage2.bmp");
-    GameState->Monster = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/monster.bmp");
-    GameState->Sword = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/fireball.bmp");
+    GameState->Wall = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/brick.bmp", 40 ,80);
+    GameState->Wizard.Wiz[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage1.bmp", 50, 145);
+    GameState->Wizard.Wiz[1] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage2.bmp", 50, 145);
+    GameState->Monster = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/monster.bmp", 40, 80);
+    GameState->Sword = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/fireball.bmp", 25 ,25);
     GameState->Staff = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/staff.bmp");
     GameState->Stair = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/staff.bmp");
     GameState->Grass[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/Grass.bmp");
@@ -979,13 +980,16 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	//ConHero->dvZ = 3.0f;
       }
       ConHero->dSword = {};
+      real32 ZoomRate = 0.0f;
       if(Controller->ActionUp.EndedDown)
       {
 	ConHero->dSword = v2{0.0f, 1.0f};
+	ZoomRate = 1.0f;
       }
       if(Controller->ActionDown.EndedDown)
       {
 	ConHero->dSword = v2{0.0f, -1.0f};
+	ZoomRate = -1.0f;
       }
       if(Controller->ActionLeft.EndedDown)
       {
@@ -995,7 +999,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       {
 	ConHero->dSword = v2{1.0f, 0.0f};
       }
-      
     }
   }
   temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->TranArena);
@@ -1013,6 +1016,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   real32 ScreenCenX = 0.5f*(real32)DrawBuffer->Width;
   real32 ScreenCenY = 0.5f*(real32)DrawBuffer->Height;
+
+  
+  real32 ScreenWidthInMeters = DrawBuffer->Width*PixelsToMeters;
+  real32 ScreenHeightInMeters = DrawBuffer->Height*PixelsToMeters;
+  rectangle3 CameraBounds = RectCentDim(V3(0, 0, 0), V3(ScreenWidthInMeters, ScreenHeightInMeters, 0.0f));
+  CameraBounds.Min.z = -3.0f*GameState->TypicalFloorHeight;
+  CameraBounds.Max.z = 1.0f*GameState->TypicalFloorHeight;
+
+#if 0
   for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
   {
     ground_buffer *GroundBuffer = TranState->GroundBuffers + GroundBufferIndex;
@@ -1020,14 +1032,17 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       loaded_bitmap *Bitmap = &GroundBuffer->Bitmap;
       v3 Delta = Subtract(GameState->World, &GroundBuffer->P, &GameState->CameraP);
-      PushBitmap(RenderGroup, Bitmap, Delta.xy, Delta.z, 0.5f*V2i(Bitmap->Width, Bitmap->Height));
+      Bitmap->AlignX = Bitmap->Width/2;
+      Bitmap->AlignY = Bitmap->Height/2;
+
+      render_basis *Basis = PushStruct(&TranState->TranArena, render_basis);
+      RenderGroup->DefaultBasis = Basis;
+      Basis->P = Delta;
+      PushBitmap(RenderGroup, Bitmap, V3(0, 0, 0));
     }
   }
 
 
-  real32 ScreenWidthInMeters = DrawBuffer->Width*PixelsToMeters;
-  real32 ScreenHeightInMeters = DrawBuffer->Height*PixelsToMeters;
-  rectangle3 CameraBounds = RectCentDim(V3(0, 0, 0), V3(ScreenWidthInMeters, ScreenHeightInMeters, 0.0f));
   v2 ScreenCenter = v2{0.5f*(real32)DrawBuffer->Width, 0.5f*(real32)DrawBuffer->Height};
   {
     world_position MinChunkP = MapIntoChunkSpace(World, GameState->CameraP, GetMinCorner(CameraBounds));
@@ -1077,58 +1092,23 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 		    FillGroundChunk(TranState, GameState, FurthestBuffer, &ChunkCenterP);
 		  }
 		  
-		  //PushRectOutline(RenderGroup, RelP.xy,  0.0f, World->ChunkDimInMeters.xy, v4{1.0f, 1.0f, 0.0f, 1.0f});
+		  //PushRectOutline(RenderGroup, RelP, World->ChunkDimInMeters.xy, v4{1.0f, 1.0f, 0.0f, 1.0f});
                 }
             }
         }
     }
   }
-
-  v3 SimBoundsExpansion = {15.0f, 15.0f, 15.0f};
+#endif
+  v3 SimBoundsExpansion = {15.0f, 15.0f, 0.0f};
   rectangle3 SimBounds = AddRadiusTo(CameraBounds, SimBoundsExpansion);
 
   temporary_memory SimMemory = BeginTemporaryMemory(&TranState->TranArena);
 
   
   real32 dtForFrame = Input->dtForFrame;
-  sim_region *SimRegion = BeginSim(&TranState->TranArena, GameState, GameState->World, GameState->CameraP, SimBounds, dtForFrame);
-
-
-#if 0  
-  for(int32 RelRow = -10; RelRow < 10; ++RelRow)
-  {
-    for(int32 RelColumn = -20; RelColumn < 20; ++RelColumn)
-    {
-      uint32 Column = GameState->CameraP.AbsTileX + RelColumn;
-      uint32 Row = GameState->CameraP.AbsTileY + RelRow;
-      uint32 TileID = GetTileValue(World, Column, Row, GameState->CameraP.AbsTileZ);
-      real32 Grey = 0.5f;
-      if(TileID > 1)
-      {
-        Grey = 0.5f;
-        if(TileID == 2)
-        {
-	  Grey = 1.0f;
-        }
-	if(TileID > 2)
-	{
-	  Grey = 0.25f;
-	}
-        v2 Cen ={ (ScreenCenterX - MetersToPixels * GameState->CameraP.Offset_.x + ((real32)(TileSideInPixel) * RelColumn)),
-		      (ScreenCenterY + MetersToPixels * GameState->CameraP.Offset_.y - ((real32)(TileSideInPixel) * RelRow)) };
-	v2 TileSide = { 0.5f * TileSideInPixel,  0.5f * TileSideInPixel };
-        v2 Min = Cen - TileSide;
-        v2 Max = Cen + TileSide;
-        /*if(Row == Entity->P.AbsTileY && Column == Entity->P.AbsTileX)
-        {
-	  Grey = 0.0f;
-        }
-        */
-        DrawRectangle(DrawBuffer, Min, Max, Grey, Grey, Grey);
-      }
-    }
-  }
-#endif
+  world_position SimCenterP = GameState->CameraP;
+  sim_region *SimRegion = BeginSim(&TranState->TranArena, GameState, GameState->World, SimCenterP, SimBounds, dtForFrame);
+  v3 CameraP = Subtract(World, &GameState->CameraP, &SimCenterP);
 
   for(uint32 EntityIndex = 0; EntityIndex < SimRegion->EntityCount; ++EntityIndex)
   {
@@ -1142,7 +1122,21 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
       render_basis *Basis =  PushStruct(&TranState->TranArena, render_basis);
       RenderGroup->DefaultBasis = Basis;
-      
+
+      v3 CameraRelGroundP = GetEntityGroundPoint(Entity) - CameraP;
+      real32 FadeTopStartZ = 0.5f*GameState->TypicalFloorHeight;
+      real32 FadeTopEndZ = 0.75f*GameState->TypicalFloorHeight;
+      real32 FadeBottomStartZ = -2.0f*GameState->TypicalFloorHeight;
+      real32 FadeBottomEndZ = -2.25f*GameState->TypicalFloorHeight;
+      RenderGroup->GlobalAlpha = 1.0f;
+      if(CameraRelGroundP.z > FadeTopStartZ)
+      {
+	RenderGroup->GlobalAlpha = Clamp01MapToRange(FadeTopEndZ, CameraRelGroundP.z, FadeTopStartZ);
+      }
+      else if(CameraRelGroundP.z < FadeBottomStartZ)
+      {
+	RenderGroup->GlobalAlpha = Clamp01MapToRange(FadeBottomEndZ, CameraRelGroundP.z, FadeBottomStartZ);
+      }
       switch(Entity->Type)
       {
         case EntityType_Hero:
@@ -1186,15 +1180,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       		
           //DrawRectangle(DrawBuffer, PlayerLeftTop, PlayerLeftTop + MetersToPixels * PlayerWidthHeigth, 1.0f, 0.0f, 0.0f);
 	loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
-	v2 Alignment = TopDownAlign(Wizard, v2{50, 145});
-	PushBitmap(RenderGroup, Wizard, v2{0,0}, 0, Alignment);
+	PushBitmap(RenderGroup, Wizard, v3{0, 0, 0});
 	DrawHitpoints(Entity, RenderGroup);
         } break;
 	
         case EntityType_Wall:
         {
-	  v2 Alignment = TopDownAlign(&GameState->Wall, v2{40, 80});
-          PushBitmap(RenderGroup, &GameState->Wall, v2{0,0}, 0, Alignment);
+          PushBitmap(RenderGroup, &GameState->Wall, v3{0, 0, 0});
         } break;
 	
         case EntityType_Monster:
@@ -1205,8 +1197,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  }
 	  else
 	  {
-	    v2 Alignment = TopDownAlign(&GameState->Monster, v2{40, 80});
-	    PushBitmap(RenderGroup, &GameState->Monster, v2{0,0}, 0, Alignment);
+	    PushBitmap(RenderGroup, &GameState->Monster, v3{0, 0, 0});
 	    DrawHitpoints(Entity, RenderGroup);
 	  }
         } break;
@@ -1224,8 +1215,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    ClearCollisionRulesFor(GameState, Entity->StorageIndex);
 	    MakeEntityNonSpatial(Entity);
 	  }
-	  v2 Alignment = TopDownAlign(&GameState->Sword, v2{25, 25});
-	  PushBitmap(RenderGroup, &GameState->Sword, v2{0,0}, 0, Alignment);
+	  PushBitmap(RenderGroup, &GameState->Sword, v3{0, 0, 0});
         } break;
 	
         case EntityType_Familiar:
@@ -1259,20 +1249,19 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  MoveSpec.Drag = 8.0f;
 
           loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
-	  v2 Alignment = TopDownAlign(Wizard, v2{50, 145});
-	  PushBitmap(RenderGroup, Wizard, v2{0,0}, 0, Alignment);
+	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0});
         } break;
 	
         case EntityType_Staff:
         {
 	  UpdateSword(SimRegion, Entity, dt);
-	  PushBitmap(RenderGroup, &GameState->Staff, v2{0.5f, 0}, 0, v2{25, 32});
+	  PushBitmap(RenderGroup, &GameState->Staff, v3{0.5f, 0, 0});
         } break;
 
         case EntityType_Stair:
 	{
-	  PushRect(RenderGroup, v2{0,0}, 0, Entity->WalkableDim, v4{1, 0.5f, 0, 1});
-	  PushRect(RenderGroup, v2{0,0}, Entity-> WalkableHeight, Entity->WalkableDim, v4{1, 1, 0, 1});
+	  PushRect(RenderGroup, v3{0, 0, 0}, Entity->WalkableDim, v4{1, 0.5f, 0, 1});
+	  PushRect(RenderGroup, v3{0, 0, Entity-> WalkableHeight}, Entity->WalkableDim, v4{1, 1, 0, 1});
 	} break;
 
         case EntityType_Space:
@@ -1280,7 +1269,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  for(uint32 VolumeIndex = 0; VolumeIndex < Entity->Collision->VolumeCount; ++VolumeIndex)
 	  {
 	    sim_entity_collision_volume *Volume = Entity->Collision->Volumes + VolumeIndex; 
-	    PushRectOutline(RenderGroup, Volume->OffsetP.xy, 0, Volume->Dim.xy, v4{0.0f, 0.5f, 1, 1});
+	    PushRectOutline(RenderGroup, Volume->OffsetP - v3{0, 0, 0.5f*Volume->Dim.z}, Volume->Dim.xy, v4{0.0f, 0.5f, 1, 1});
 	  }
         } break;
 	
@@ -1297,7 +1286,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       }
 
       Basis->P = GetEntityGroundPoint(Entity);
-      
+      RenderGroup->GlobalAlpha = 1.0f;
     }
   }
 

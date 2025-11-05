@@ -1,6 +1,8 @@
 #if !defined(HANDMADE_RENDER_GROUP_H)
 struct loaded_bitmap
 {
+  int32 AlignX, AlignY;
+  
   int32 Width;
   int32 Height;
   void *Memory;
@@ -29,8 +31,7 @@ enum render_group_entry_type
 struct render_entity_basis
 {
   render_basis *Basis;
-  v2 Offset;
-  real32 OffsetZ;
+  v3 Offset;
 };
 
 struct render_group_entry_header
@@ -76,6 +77,8 @@ struct render_entry_coordinate_system
 
 struct render_group
 {
+  real32 GlobalAlpha;
+  
   render_basis *DefaultBasis;
   real32 MetersToPixel;
 

@@ -215,7 +215,7 @@ internal sim_region *BeginSim(memory_arena *SimArena, game_state *GameState, wor
   SimRegion->Origin = Origin;
   SimRegion->UpdatebleBounds = AddRadiusTo(Bounds, V3(SimRegion->MaxEntityRadius,
 						      SimRegion->MaxEntityRadius,
-						      SimRegion->MaxEntityRadius));
+						      0.0f));
 
   SimRegion->Bounds = AddRadiusTo(SimRegion->UpdatebleBounds,
 				  V3(UpdateSafetyMargin, UpdateSafetyMargin, UpdateSafetyMarginZ));
@@ -297,9 +297,9 @@ internal void EndSim(sim_region *SimRegion, game_state *GameState)
 	NewCameraP.ChunkY -= 9; 
       }
 #else
-      real32 CameraZOffset = NewCameraP.Offset_.z;
+      //real32 CameraZOffset = NewCameraP.Offset_.z;
       NewCameraP = Stored->P;
-      NewCameraP.Offset_.z = CameraZOffset;
+      //NewCameraP.Offset_.z = CameraZOffset;
 #endif
       GameState->CameraP = NewCameraP;
 
