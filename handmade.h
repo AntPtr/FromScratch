@@ -250,8 +250,6 @@ struct game_state
   low_entity LowEntities[100000];
   
   uint32 CameraFollowEntityIndex;
-  real32 MetersToPixels;
-  real32 PixelsToMeters;
   
   loaded_bitmap BackGround;
   loaded_bitmap Wall;

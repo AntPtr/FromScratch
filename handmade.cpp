@@ -141,6 +141,16 @@ internal void AddCollisionRule(game_state *GameState, uint32 StorageIndexA, uint
   
 }
 
+inline v2 TopDownAlign(loaded_bitmap *Bitmap, v2 Align)
+{
+  Align.y = (real32)(Bitmap->Height - 1) - Align.y;
+
+  Align.x = SafeRatio0((real32)Align.x, (real32)Bitmap->Width);
+  Align.y = SafeRatio0((real32)Align.y, (real32)Bitmap->Height);
+  
+  return Align;
+}
+
 #pragma pack(push, 1)
 struct bitmap_header
 {
@@ -223,8 +233,9 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
     Result.Memory = Pixel;
   Result.Width = BitMap->Width;
   Result.Height = BitMap->Height;
-  Result.AlignX = AlignX;
-  Result.AlignY = (BitMap->Height - 1) - TopDownAlignY;
+  Result.WidthOverHeight =  SafeRatio0((real32)Result.Width, (real32)Result.Height);
+  Result.AlignPercentage = TopDownAlign(&Result, V2i(AlignX, TopDownAlignY));
+  real32 PixelsToMeter = 1.0f / 42.0f;
   int32 BytesPerPixel = BITMAP_BYTES_PER_PIXEL;
   Result.Pitch = BitMap->Width*BytesPerPixel;
   
@@ -444,7 +455,7 @@ sim_entity_collision_volume_group *MakeNullCollision(game_state *GameState)
 internal void FillGroundChunk(transient_state *TranState, game_state *GameState, ground_buffer *GroundBuffer, world_position *ChunkP)
 {
   temporary_memory GroundMemory = BeginTemporaryMemory(&TranState->TranArena);
-  render_group *RenderGroup = AllocateRenderGroup(&TranState->TranArena, Megabytes(4), 1.0f);
+  render_group *RenderGroup = AllocateRenderGroup(&TranState->TranArena, Megabytes(4));
   loaded_bitmap *Buffer = &GroundBuffer->Bitmap;
 
   GroundBuffer->P = *ChunkP;
@@ -474,7 +485,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 
 	real32 Radius = 5.0f;
 	v2 P = Center + Offset - BitmapCenter;
-	PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f));
+	PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f) , 1.0f);
       }
     }
   }
@@ -499,7 +510,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 
 	real32 Radius = 5.0f;
 	v2 P = Center + Offset - BitmapCenter;
-	PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f));
+	PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f), 1.0f);
       }
     }
   }
@@ -616,12 +627,6 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   return Result;
 }
 
-inline v2 TopDownAlign(loaded_bitmap *Bitmap, v2 Align)
-{
-  Align.y = (real32)(Bitmap->Height - 1) - Align.y;
-  return Align;
-}
-
 #if 0
 internal void RequestGroundBuffer(world_position CenterP, rectangle3 Bounds)
 {
@@ -642,7 +647,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) == (ArrayCount(Input->Controllers[0].Buttons)));
 
   game_state *GameState = (game_state *)Memory->PermanentStorage;
-  
+  //Remeber to remove this!
+  real32 PixelsToMeters = 1.0f / 42.0f;
   if(!Memory->IsInitialized)
   { 
     /*GameState->ToneHz = 256;
@@ -662,10 +668,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     world *World = GameState->World;
     AddLowEntity(GameState, EntityType_Null, NullPosition());
     GameState->TypicalFloorHeight = 3.0f;
-    GameState->MetersToPixels = 48.0f;
-    GameState->PixelsToMeters = 1.0f / GameState->MetersToPixels;
-    v3 WorldChunkDimInMeters = {GameState->PixelsToMeters*(real32)GroundBufferWidth,
-                                GameState->PixelsToMeters*(real32)GroundBufferHeight,
+
+    v3 WorldChunkDimInMeters = {PixelsToMeters*(real32)GroundBufferWidth,
+                                PixelsToMeters*(real32)GroundBufferHeight,
                                 GameState->TypicalFloorHeight};
     InitializeWorld(World, WorldChunkDimInMeters);
 
@@ -691,7 +696,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 							  2.0f*TileSideInMeter,
 							  1.1f*TileDepthInMeters);
     
-    GameState->PlayerCollision = MakeSimpleGroundCollision(GameState, 1.0f, 0.5f, 1.2f);
+    GameState->PlayerCollision = MakeSimpleGroundCollision(GameState, 1.0f, 0.5f, 1.8f);
     
     GameState->MonsterCollision = MakeSimpleGroundCollision(GameState, 1.0f, 0.5f, 0.5f);
     
@@ -926,8 +931,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   //uint32 TileSideInPixel = 60;
   //(real32)TileSideInPixel / (real32)World->TileSideInMeter
-  real32 MetersToPixels = GameState->MetersToPixels;
-  real32 PixelsToMeters = 1.0f/MetersToPixels;
   //real32 LowerLeftX = -(real32)(TileSideInPixel / 2);
   //real32 LowerLeftY = (real32)Buffer->Height;
 
@@ -1002,7 +1005,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
   }
   temporary_memory RenderMemory = BeginTemporaryMemory(&TranState->TranArena);
-  render_group *RenderGroup = AllocateRenderGroup(&TranState->TranArena, Megabytes(4), GameState->MetersToPixels);
+  render_group *RenderGroup = AllocateRenderGroup(&TranState->TranArena, Megabytes(4));
 
   loaded_bitmap DrawBuffer_ = {};
   loaded_bitmap* DrawBuffer = &DrawBuffer_;
@@ -1180,13 +1183,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       		
           //DrawRectangle(DrawBuffer, PlayerLeftTop, PlayerLeftTop + MetersToPixels * PlayerWidthHeigth, 1.0f, 0.0f, 0.0f);
 	loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
-	PushBitmap(RenderGroup, Wizard, v3{0, 0, 0});
+	PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
 	DrawHitpoints(Entity, RenderGroup);
         } break;
 	
         case EntityType_Wall:
         {
-          PushBitmap(RenderGroup, &GameState->Wall, v3{0, 0, 0});
+          PushBitmap(RenderGroup, &GameState->Wall, v3{0, 0, 0}, 2.5f);
         } break;
 	
         case EntityType_Monster:
@@ -1197,7 +1200,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  }
 	  else
 	  {
-	    PushBitmap(RenderGroup, &GameState->Monster, v3{0, 0, 0});
+	    PushBitmap(RenderGroup, &GameState->Monster, v3{0, 0, 0}, 1.0f);
 	    DrawHitpoints(Entity, RenderGroup);
 	  }
         } break;
@@ -1215,7 +1218,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    ClearCollisionRulesFor(GameState, Entity->StorageIndex);
 	    MakeEntityNonSpatial(Entity);
 	  }
-	  PushBitmap(RenderGroup, &GameState->Sword, v3{0, 0, 0});
+	  PushBitmap(RenderGroup, &GameState->Sword, v3{0, 0, 0}, 0.5f);
         } break;
 	
         case EntityType_Familiar:
@@ -1249,13 +1252,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  MoveSpec.Drag = 8.0f;
 
           loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
-	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0});
+	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.2f);
         } break;
 	
         case EntityType_Staff:
         {
 	  UpdateSword(SimRegion, Entity, dt);
-	  PushBitmap(RenderGroup, &GameState->Staff, v3{0.5f, 0, 0});
+	  PushBitmap(RenderGroup, &GameState->Staff, v3{0.5f, 0, 0}, 0.8f);
         } break;
 
         case EntityType_Stair:

@@ -174,6 +174,12 @@ inline v3 Hadamard(v3 A, v3 B)
   return Result;
 }
 
+inline v2 Hadamard(v2 A, v2 B)
+{
+  v2 Result = {A.x*B.x, A.y*B.y};
+  return Result;
+}
+
 inline real32 DotProduct(v3 A, v3 B)
 {
   real32 Result;

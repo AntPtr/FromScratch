@@ -1,8 +1,10 @@
 #if !defined(HANDMADE_RENDER_GROUP_H)
+//All the coordinates passed to the render must be specified in world coordinate(meters) and not in pixels
+
 struct loaded_bitmap
 {
-  int32 AlignX, AlignY;
-  
+  v2 AlignPercentage;
+  real32 WidthOverHeight;
   int32 Width;
   int32 Height;
   void *Memory;
@@ -47,7 +49,8 @@ struct render_entry_clear
 struct render_entry_bitmap
 {
   loaded_bitmap *Bitmap;
-  render_entity_basis EntityBasis; 
+  render_entity_basis EntityBasis;
+  v2 Size;
   v4 Color;
 };
 
@@ -80,7 +83,6 @@ struct render_group
   real32 GlobalAlpha;
   
   render_basis *DefaultBasis;
-  real32 MetersToPixel;
 
   uint32 MaxPushBufferSize;
   uint32 PushBufferSize;
