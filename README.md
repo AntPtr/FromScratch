@@ -2,4 +2,5 @@ Following Casey Muratori footsteps im going to program a game in C using some C+
 I'm going to list some of them time by time: 
 
 
--Collision detection
+-Collisions detection
+![Demo](https://imgur.com/a/hjiqHFj)
