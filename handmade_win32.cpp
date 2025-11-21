@@ -733,6 +733,28 @@ inline void Win32DrawSoundBufferMarker(win32_offscreen_buffer *Backbuffer, win32
     int X = PadX + (int)XReal;
     Win32DebugDrawVertical(Backbuffer, X, Top, Bottom, Color);
 }
+
+internal void HandleDebugCycleCounters(game_memory *Memory)
+{
+#if H_INTERNAL
+  OutputDebugStringA("DEBUG CYCLE COUNT:\n");
+
+  for(int CounterIndex = 0; CounterIndex < ArrayCount(Memory->Counter); ++CounterIndex)
+  {
+    debug_cycle_counter *Counter = Memory->Counter + CounterIndex;
+    if(Counter->HitCount)
+    {
+      char TextBuffer[256];
+
+      sprintf_s(TextBuffer, " %d: %I64ucy %uh  %I64ucy/h\n", CounterIndex, Counter->CycleCount, Counter->HitCount, Counter->CycleCount / Counter->HitCount);
+      OutputDebugStringA(TextBuffer);
+      Counter->HitCount = 0;
+      Counter->CycleCount = 0;
+    }
+  }
+#endif
+}
+
 #if 0
 internal void  Win32DebugSyncDisplay(win32_offscreen_buffer *Backbuffer, int MarkerCount, win32_debug_time_marker *Markers, int CurrentMarkerIndex, win32_sound_output *SoundOutput, real32 TargetSecondsPerFrame)
 {
@@ -1138,6 +1160,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    if(Game.UpdateAndRender)
 	    {
 	      Game.UpdateAndRender(&Thread ,&GameMemory, NewInput , &Buffer);
+	      HandleDebugCycleCounters(&GameMemory);
 	    }
 	    LARGE_INTEGER AudioWallClock = Win32GetClock();
 	    real32 FromBeginToAudioSeconds = Win32GetSecondsElapsed(FlipWallClock, AudioWallClock);
@@ -1217,7 +1240,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	      Marker->OutputByteCount = BytesToWrite;
 	      Marker->ExpectedFlipPlayCursor = ExpectedFrameBoundaryByte;
 
-	      OutputDebugStringA(TextBuffer);
+	      //OutputDebugStringA(TextBuffer);
 #endif	    
 	    }
 	    else
@@ -1290,7 +1313,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    
 	    char StrBuffer[256];
             sprintf_s(StrBuffer, "%.02fms/f - %dFPS\n", MSPerFrame, FPS);
-            OutputDebugStringA(StrBuffer);
+            //OutputDebugStringA(StrBuffer);
 	    
             game_input *Temp = NewInput;
             NewInput = OldInput;

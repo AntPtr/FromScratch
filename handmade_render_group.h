@@ -78,10 +78,21 @@ struct render_entry_coordinate_system
   v2 Point;
 };
 
+struct render_group_camera
+{
+  real32 FocalLength;
+  real32 CameraDistanceAboveTarget;
+};
+
 struct render_group
 {
   real32 GlobalAlpha;
   
+  render_group_camera GameCamera;
+  render_group_camera RenderCamera;
+  
+  real32 MetersToPixels; 
+  v2 MonitorHalfDimInMeters;
   render_basis *DefaultBasis;
 
   uint32 MaxPushBufferSize;

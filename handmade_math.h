@@ -351,6 +351,12 @@ inline v2 GetMaxCorner(rectangle2 Rect)
   return Result;
 }
 
+inline v2 GetDim(rectangle2 Rect)
+{
+  v2 Result = Rect.Max - Rect.Min;
+  return Result;
+}
+
 inline v2 GetMinCorner(rectangle2 Rect)
 {
   v2 Result = Rect.Min;

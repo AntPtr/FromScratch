@@ -164,6 +164,7 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 				loaded_bitmap *Texture, loaded_bitmap *NormalMap,
 				environment_map *Top, environment_map *Middle, environment_map *Bottom, real32 PixelsToMeter)
 {
+  BEGIN_TIMED_BLOCK(DrawRectangleSlowly);
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
 			    RoundReal32ToUInt32(255 * Color.r) << 16 |
 			    RoundReal32ToUInt32(255 * Color.g) << 8 |
@@ -342,7 +343,277 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
     }
     Row += Buffer->Pitch;
   }
+  END_TIMED_BLOCK(DrawRectangleSlowly);
+}
+
+internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
+				loaded_bitmap *Texture, real32 PixelsToMeter)
+{
+  BEGIN_TIMED_BLOCK(DrawRectangleQuickly);
+  uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
+			    RoundReal32ToUInt32(255 * Color.r) << 16 |
+			    RoundReal32ToUInt32(255 * Color.g) << 8 |
+			    RoundReal32ToUInt32(255 * Color.b) << 0);
+
+  int WidthMax = (Buffer->Width - 1) - 3;
+  int HeightMax = (Buffer->Height - 1) - 3;
+
+  v2 P[4] = {Origin, Origin + XAxis, Origin + XAxis + YAxis, Origin + YAxis};
+
+  int XMin = WidthMax;
+  int XMax = 0;
+  int YMin = HeightMax;
+  int YMax = 0;
+
+  real32 InvWidthMax = 1.0f / (real32)WidthMax;
+  real32 InvHeightMax = 1.0f / (real32)HeightMax;
+
+  real32 OriginZ = 0.0f;
+  real32 OriginY = (Origin + 0.5f*XAxis + 0.5f*YAxis).y;
+  real32 FixedCastY = InvHeightMax*OriginY;
   
+  real32 XAxisLength = Length(XAxis);
+  real32 YAxisLength = Length(YAxis);
+
+  v2 NxAxis = (YAxisLength / XAxisLength)*XAxis;
+  v2 NyAxis = (XAxisLength / YAxisLength)*YAxis;
+
+  real32 NzScale = 0.5f*(XAxisLength + YAxisLength);
+
+  real32 InvXAxisLengthSq = 1.0f / LengthSq(XAxis);
+  real32 InvYAxisLengthSq = 1.0f / LengthSq(YAxis);
+
+  //Premuliply color
+  Color.rgb *= Color.a;
+  
+  for(uint32 Index = 0; Index < ArrayCount(P); ++Index)
+  {
+    v2 TestP = P[Index];
+    int FloorX = FloorReal32ToInt32(P[Index].x);
+    int CeilX = CeilReal32ToInt32(P[Index].x);
+    int FloorY = FloorReal32ToInt32(P[Index].y);
+    int CeilY = CeilReal32ToInt32(P[Index].y);
+
+    
+    if(XMin > FloorX) {XMin = FloorX;}
+    if(XMax < CeilX) {XMax = CeilX;}
+    if(YMin > FloorY) {YMin = FloorY;}
+    if(YMax < CeilY) {YMax = CeilY;}
+    
+  }
+
+  if(XMax > WidthMax) {XMax = WidthMax;}
+  if(XMin < 0) {XMin = 0;}
+  if(YMax > HeightMax) {YMax = HeightMax;}
+  if(YMin < 0) {YMin = 0;}
+  
+  v2 nXAxis = InvXAxisLengthSq*XAxis;
+  v2 nYAxis = InvYAxisLengthSq*YAxis;
+  real32 Inv255 = 1.0f / 255.0f;
+  real32 One255 = 255.0f;
+
+  __m128 Inv255_4x = _mm_set1_ps(Inv255);
+  __m128 One = _mm_set1_ps(1.0f);
+  __m128 One255_4x = _mm_set1_ps(255.0f);
+  __m128 Zero = _mm_set1_ps(0.0f);
+  __m128 Colorr_4x = _mm_set1_ps(Color.r);
+  __m128 Colorg_4x = _mm_set1_ps(Color.g);
+  __m128 Colorb_4x = _mm_set1_ps(Color.b);
+  __m128 Colora_4x = _mm_set1_ps(Color.a);
+  __m128 nXAxisx_4x = _mm_set1_ps(nXAxis.x);
+  __m128 nXAxisy_4x = _mm_set1_ps(nXAxis.y);
+  __m128 nYAxisx_4x = _mm_set1_ps(nYAxis.x);
+  __m128 nYAxisy_4x = _mm_set1_ps(nYAxis.y);
+  __m128 Originx_4x = _mm_set1_ps(Origin.x);
+  __m128 Originy_4x = _mm_set1_ps(Origin.y);
+
+  uint8* Row = ((uint8 *)Buffer->Memory + XMin*BITMAP_BYTES_PER_PIXEL + YMin*Buffer->Pitch);
+  
+  for(int Y = YMin; Y < YMax; ++Y)
+  { 
+    uint32 *Pixel = (uint32 *)Row;
+    for(int XI = XMin; XI <= XMax; XI += 4)
+    {
+      
+      __m128 TexelAr = _mm_set1_ps(0.0f);
+      __m128 TexelAg = _mm_set1_ps(0.0f);
+      __m128 TexelAb = _mm_set1_ps(0.0f);
+      __m128 TexelAa = _mm_set1_ps(0.0f);
+
+      __m128 TexelBr = _mm_set1_ps(0.0f);
+      __m128 TexelBg = _mm_set1_ps(0.0f);
+      __m128 TexelBb = _mm_set1_ps(0.0f);
+      __m128 TexelBa = _mm_set1_ps(0.0f);
+
+      __m128 TexelCr = _mm_set1_ps(0.0f);
+      __m128 TexelCg = _mm_set1_ps(0.0f);
+      __m128 TexelCb = _mm_set1_ps(0.0f);
+      __m128 TexelCa = _mm_set1_ps(0.0f);
+
+      __m128 TexelDr = _mm_set1_ps(0.0f);
+      __m128 TexelDg = _mm_set1_ps(0.0f);
+      __m128 TexelDb = _mm_set1_ps(0.0f);
+      __m128 TexelDa = _mm_set1_ps(0.0f);
+
+      __m128 Destr = _mm_set1_ps(0.0f);
+      __m128 Destg = _mm_set1_ps(0.0f);
+      __m128 Destb = _mm_set1_ps(0.0f);
+      __m128 Desta = _mm_set1_ps(0.0f);
+
+      __m128 Blendedr = _mm_set1_ps(0.0f);
+      __m128 Blendedg = _mm_set1_ps(0.0f);
+      __m128 Blendedb = _mm_set1_ps(0.0f);
+      __m128 Blendeda = _mm_set1_ps(0.0f);
+
+      __m128 fX = _mm_set1_ps(0.0f);
+      __m128 fY = _mm_set1_ps(0.0f);
+
+      bool ShouldFill[4];
+
+#define mmSquare(a) _mm_mul_ps(a, a)
+#define M(a, i) ((float *)&a)[i]
+
+      __m128 PixelPx = _mm_set_ps(((real32)XI + 3), ((real32)XI + 2), ((real32)XI + 1), ((real32)XI + 0));
+      __m128 PixelPy = _mm_set1_ps((real32)Y);
+
+      __m128 dX = _mm_sub_ps(PixelPx, Originx_4x);
+      __m128 dY = _mm_sub_ps(PixelPy, Originy_4x);
+
+      __m128 U = _mm_add_ps(_mm_mul_ps(dX, nXAxisx_4x), _mm_mul_ps(dY, nXAxisy_4x));
+      __m128 V = _mm_add_ps(_mm_mul_ps(dX, nYAxisx_4x), _mm_mul_ps(dY, nYAxisy_4x));
+
+      for(int I = 0; I < 4; ++I)
+      {
+	ShouldFill[I] = ((M(U,I) >= 0.0f) && (M(U,I) <= 1.0f) &&
+			 (M(V,I) <= 1.0f) && (M(V, I) >= 0.0f));
+
+	if(ShouldFill[I])
+	{
+	  real32 tX = (M(U,I)*(real32)(Texture->Width - 2));
+	  real32 tY = (M(V,I)*(real32)(Texture->Height - 2));
+	
+	  int32 XMap = (int32)tX;
+	  int32 YMap = (int32)tY;
+
+	  M(fX, I) = tX - (real32)XMap;
+	  M(fY, I) = tY - (real32)YMap;
+
+	  uint8 *TexelPtr = ((uint8 *)Texture->Memory) + YMap*Texture->Pitch + XMap*sizeof(uint32);
+	  uint32 SampleA = *(uint32 *)(TexelPtr);
+	  uint32 SampleB = *(uint32 *)(TexelPtr + sizeof(uint32));
+	  uint32 SampleC = *(uint32 *)(TexelPtr + Texture->Pitch);
+	  uint32 SampleD = *(uint32 *)(TexelPtr + Texture->Pitch + sizeof(uint32));
+
+	  //Unpack every colors from pixels samples
+	  M(TexelAr, I) = (real32)((SampleA >> 16) & 0xFF);
+	  M(TexelAg, I) = (real32)((SampleA >> 8) & 0xFF);
+	  M(TexelAb, I) = (real32)((SampleA >> 0) & 0xFF);
+	  M(TexelAa, I) = (real32)((SampleA >> 24) & 0xFF);
+	  
+	  M(TexelBr, I) = (real32)((SampleB >> 16) & 0xFF);
+	  M(TexelBg, I) = (real32)((SampleB >> 8) & 0xFF);
+	  M(TexelBb, I) = (real32)((SampleB >> 0) & 0xFF);
+	  M(TexelBa, I) = (real32)((SampleB >> 24) & 0xFF);
+	
+	  M(TexelCr, I) = (real32)((SampleC >> 16) & 0xFF);
+	  M(TexelCg, I) = (real32)((SampleC >> 8) & 0xFF);
+	  M(TexelCb, I) = (real32)((SampleC >> 0) & 0xFF);
+	  M(TexelCa, I) = (real32)((SampleC >> 24) & 0xFF);
+	
+	  M(TexelDr, I) = (real32)((SampleD >> 16) & 0xFF);
+	  M(TexelDg, I) = (real32)((SampleD >> 8) & 0xFF);
+	  M(TexelDb, I) = (real32)((SampleD >> 0) & 0xFF);
+	  M(TexelDa, I) = (real32)((SampleD >> 24) & 0xFF);
+
+	  M(Destr, I) = (real32)((*(Pixel + I) >> 16) & 0xFF);
+	  M(Destg, I) = (real32)((*(Pixel + I) >> 8) & 0xFF);
+	  M(Destb, I) = (real32)((*(Pixel + I) >> 0) & 0xFF);
+	  M(Desta, I) = (real32)((*(Pixel + I) >> 24) & 0xFF);
+	}	
+      }
+
+      //From sRGB to linear 0-1 
+      TexelAr = mmSquare(_mm_mul_ps(Inv255_4x, TexelAr));
+      TexelAg = mmSquare(_mm_mul_ps(Inv255_4x, TexelAg));
+      TexelAb = mmSquare(_mm_mul_ps(Inv255_4x, TexelAb));
+      TexelAa = _mm_mul_ps(Inv255_4x, TexelAa);
+
+      TexelBr = mmSquare(_mm_mul_ps(Inv255_4x, TexelBr));
+      TexelBg = mmSquare(_mm_mul_ps(Inv255_4x, TexelBg));
+      TexelBb = mmSquare(_mm_mul_ps(Inv255_4x, TexelBb));
+      TexelBa = _mm_mul_ps(Inv255_4x, TexelBa);
+
+      TexelCr = mmSquare(_mm_mul_ps(Inv255_4x, TexelCr));
+      TexelCg = mmSquare(_mm_mul_ps(Inv255_4x, TexelCg));
+      TexelCb = mmSquare(_mm_mul_ps(Inv255_4x, TexelCb));
+      TexelCa = _mm_mul_ps(Inv255_4x, TexelCa);
+
+      TexelDr = mmSquare(_mm_mul_ps(Inv255_4x, TexelDr));
+      TexelDg = mmSquare(_mm_mul_ps(Inv255_4x, TexelDg));
+      TexelDb = mmSquare(_mm_mul_ps(Inv255_4x, TexelDb));
+      TexelDa = _mm_mul_ps(Inv255_4x, TexelDa);
+	
+      //Bilinear texture blend
+      __m128 ifX = _mm_sub_ps(One, fX);
+      __m128 ifY = _mm_sub_ps(One, fY);
+
+      __m128 l0 = _mm_mul_ps(ifY, ifX);
+      __m128 l1 = _mm_mul_ps(ifY, fX);
+      __m128 l2 = _mm_mul_ps(fY, ifX);
+      __m128 l3 = _mm_mul_ps(fY, fX);
+
+      __m128 Texelr = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, TexelAr), _mm_mul_ps(l1, TexelBr)), _mm_add_ps(_mm_mul_ps(l2, TexelCr), _mm_mul_ps(l3, TexelDr)));
+      __m128 Texelg = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, TexelAg), _mm_mul_ps(l1, TexelBg)), _mm_add_ps(_mm_mul_ps(l2, TexelCg), _mm_mul_ps(l3, TexelDg)));
+      __m128 Texelb = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, TexelAb), _mm_mul_ps(l1, TexelBb)), _mm_add_ps(_mm_mul_ps(l2, TexelCb), _mm_mul_ps(l3, TexelDb)));
+      __m128 Texela = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, TexelAa), _mm_mul_ps(l1, TexelBa)), _mm_add_ps(_mm_mul_ps(l2, TexelCa), _mm_mul_ps(l3, TexelDa)));
+
+      //Multiply by external color
+      Texelr = _mm_mul_ps(Texelr, Colorr_4x);
+      Texelg = _mm_mul_ps(Texelg, Colorg_4x);
+      Texelb = _mm_mul_ps(Texelb, Colorb_4x);
+      Texela = _mm_mul_ps(Texela, Colora_4x);
+
+      //Clamp01
+      Texelr = _mm_min_ps(_mm_max_ps(Texelr, Zero), One);
+      Texelg = _mm_min_ps(_mm_max_ps(Texelg, Zero), One);
+      Texelb = _mm_min_ps(_mm_max_ps(Texelb, Zero), One);
+
+      //Dest pixels from SRGB to linear 0 - 1
+      Destr = mmSquare(_mm_mul_ps(Inv255_4x, Destr));
+      Destg = mmSquare(_mm_mul_ps(Inv255_4x, Destg));
+      Destb = mmSquare(_mm_mul_ps(Inv255_4x, Destb));
+      Desta = _mm_mul_ps(Inv255_4x, Desta);
+
+      //Blend with Dest
+      __m128 InvTexela = _mm_sub_ps(One, Texela);
+      Blendedr = _mm_add_ps(_mm_mul_ps(InvTexela, Destr), Texelr);
+      Blendedg = _mm_add_ps(_mm_mul_ps(InvTexela, Destg), Texelg);
+      Blendedb = _mm_add_ps(_mm_mul_ps(InvTexela, Destb), Texelb);
+      Blendeda = _mm_add_ps(_mm_mul_ps(InvTexela, Desta), Texela);
+
+      //From linear back to corrected sRGB255
+      Blendedr = _mm_mul_ps(One255_4x, _mm_sqrt_ps(Blendedr));
+      Blendedg = _mm_mul_ps(One255_4x, _mm_sqrt_ps(Blendedg));
+      Blendedb = _mm_mul_ps(One255_4x, _mm_sqrt_ps(Blendedb));
+      Blendeda = _mm_mul_ps(One255_4x, Blendeda);
+
+      //Write the pixels in memory
+      for(int I = 0; I < 4; ++I)
+      {
+	if(ShouldFill[I])
+	{
+	  *(Pixel + I) = (((uint32)(M(Blendeda, I) + 0.5f) << 24) |
+		    ((uint32)(M(Blendedr, I) + 0.5f) << 16) |
+		    ((uint32)(M(Blendedg, I) + 0.5f) << 8) |
+		    ((uint32)(M(Blendedb, I) + 0.5f) << 0));
+	}
+      }
+
+      Pixel += 4;
+    }
+    Row += Buffer->Pitch;
+  }
+  END_TIMED_BLOCK(DrawRectangleQuickly);
 }
 
 
@@ -442,29 +713,28 @@ struct entity_basis_result
   bool32 Valid;
 };
 
-entity_basis_result GetRenderEntityBasisP(render_group *RenderGroup, render_entity_basis *EntityBasis, v2 ScreenDim, real32 MetersToPixels)
+entity_basis_result GetRenderEntityBasisP(render_group *RenderGroup, render_entity_basis *EntityBasis, v2 ScreenDim)
 {
   v2 ScreenCenter = 0.5f*ScreenDim;
   entity_basis_result Result = {};
   v3 EntityBaseP = EntityBasis->Basis->P;
-  real32 FocalLength = 6.0f;
-  real32 CameraDistanceAboveScreen = 5.0f;
-  real32 DistanceToPz = CameraDistanceAboveScreen - EntityBaseP.z;
+
+  real32 DistanceToPz = RenderGroup->RenderCamera.CameraDistanceAboveTarget - EntityBaseP.z;
   real32 NearClipPlane = 0.20f;
 
   v3 RawXY = V3(EntityBaseP.xy + EntityBasis->Offset.xy, 1.0f);
   if(DistanceToPz > NearClipPlane)
   {
-    v3 ProjectedXY = (1.0f / DistanceToPz)*FocalLength*RawXY;
-    Result.P = ScreenCenter + MetersToPixels*ProjectedXY.xy;
-    Result.Scale = MetersToPixels*ProjectedXY.z;
+    v3 ProjectedXY = (1.0f / DistanceToPz)*RenderGroup->RenderCamera.FocalLength*RawXY;
+    Result.P = ScreenCenter + RenderGroup->MetersToPixels*ProjectedXY.xy;
+    Result.Scale = RenderGroup->MetersToPixels*ProjectedXY.z;
     Result.Valid = true;
   }
   
   return Result;
 }
 
-internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBufferSize)
+internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBufferSize, uint32 ResPixelX, uint32 ResPixelY)
 {
   render_group *Result = PushStruct(Arena, render_group);
   Result->PushBufferBase = (uint8 *)PushSize(Arena, MaxPushBufferSize);
@@ -474,15 +744,27 @@ internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBu
   Result->MaxPushBufferSize = MaxPushBufferSize;
   Result->PushBufferSize = 0;
   Result->GlobalAlpha = 1.0f;
-
+  Result->GameCamera.FocalLength = 0.6f;
+  Result->GameCamera.CameraDistanceAboveTarget = 9.0f;
+  
+  Result->RenderCamera = Result->GameCamera;
+  //Result->RenderCamera.CameraDistanceAboveTarget = 30.0f;
+  
+  real32 WidthOfMonitor =  0.635f;
+  Result->MetersToPixels = (real32)ResPixelX*WidthOfMonitor;
+  real32 PixelsToMeters = 1.0f / Result->MetersToPixels;
+  Result->MonitorHalfDimInMeters = v2{0.5f*ResPixelX*PixelsToMeters,
+                                      0.5f*ResPixelY*PixelsToMeters};
   return Result;
 }
 
 internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget)
 {
+  BEGIN_TIMED_BLOCK(RenderGroupToOutput);
+
   v2 ScreenDim = v2{(real32)OutputTarget->Width, (real32)OutputTarget->Height};
-  real32 MetersToPixels = ScreenDim.x / 20.0f;
-  real32 PixelsToMeters = 1.0f / MetersToPixels;
+
+  real32 PixelsToMeters = 1.0f / RenderGroup->MetersToPixels;
  for(uint32 BaseAdress = 0; BaseAdress < RenderGroup->PushBufferSize; )
  {
    render_group_entry_header *Header = (render_group_entry_header *)(RenderGroup->PushBufferBase + BaseAdress);
@@ -503,16 +785,16 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      case RenderGroupEntryType_render_entry_bitmap:
      {
        render_entry_bitmap *Entry = (render_entry_bitmap *)Data;
-       entity_basis_result Basis =  GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim, MetersToPixels);
+       entity_basis_result Basis =  GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim);
        Assert(Entry->Bitmap);
 #if 0
 
        DrawBitmap(OutputTarget, Entry->Bitmap, P.x, P.y);
 #else
 
-       DrawRectangleSlow(OutputTarget, Basis.P, Basis.Scale*v2{Entry->Size.x, 0},
+       DrawRectangleQuickly(OutputTarget, Basis.P, Basis.Scale*v2{Entry->Size.x, 0},
 			 Basis.Scale*v2{0, Entry->Size.y}, Entry->Color,
-			 Entry->Bitmap, 0, 0, 0, 0, 1.0f / PixelsToMeters);
+			 Entry->Bitmap, 1.0f / PixelsToMeters);
 #endif
        BaseAdress += sizeof(*Entry);
        
@@ -521,7 +803,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      case RenderGroupEntryType_render_entry_rectangle:
      {
        render_entry_rectangle *Entry = (render_entry_rectangle *)Data;
-       entity_basis_result Basis = GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim, MetersToPixels);
+       entity_basis_result Basis = GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim);
        DrawRectangle(OutputTarget, Basis.P, Basis.P + Basis.Scale*Entry->Dim, Entry->Color);
 
        BaseAdress += sizeof(*Entry);
@@ -554,6 +836,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      InvalidDefaultCase;
    }  
  }
+ END_TIMED_BLOCK(RenderGroupToOutput);
 }
 
 #define PushRenderElement(Group, Type) (Type*)PushRenderElement_(Group, sizeof(Type), RenderGroupEntryType_##Type)
@@ -643,5 +926,25 @@ inline render_entry_coordinate_system *CoordinateSystem(render_group *Group, v2 
   }
 
   return Piece;
+}
+
+inline v2 UnProjected(render_group *Group, v2 ProjectedXY, real32 AtDistanceFromTheCamera)
+{
+  v2 WorldXY = (AtDistanceFromTheCamera / Group->GameCamera.FocalLength)*ProjectedXY;
+  return WorldXY;
+}
+
+inline rectangle2 GetCameraRectangleAtDistance(render_group *Group, real32 DistanceFromTheCamera)
+{
+  v2 RawXY = UnProjected(Group, Group->MonitorHalfDimInMeters, DistanceFromTheCamera);
+  rectangle2 Result = RectCenHalfDim(v2{0, 0}, RawXY);
+  return Result;
+}
+
+inline rectangle2 GetCameraRectangleAtTarget(render_group *Group)
+{
+
+  rectangle2 Result = GetCameraRectangleAtDistance(Group, Group->GameCamera.CameraDistanceAboveTarget);
+  return Result;
 }
 
