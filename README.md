@@ -2,7 +2,9 @@ Following Casey Muratori footsteps im going to program a game in C using some C+
 The building is done with a simple bat file.
 <br>
 I'm going to list some of them time by time: 
-
+-Software rasterizer for scaling/rotating and bilinear sample with sRGB, optimized with SIMD SSE2 instructions for better cpu performance
+![Demo](https://i.imgur.com/JsuI1Mm.gif)
+<br>
 -Collisions detection
 <br>
 ![Demo](https://i.imgur.com/9HlO3g4.gif)
