@@ -883,6 +883,104 @@ LRESULT MainWindowCallback(
   return Result;
 }
 
+struct platform_work_queue_entry
+{
+  platform_work_queue_callback *Callback;
+  void *Data;
+};
+
+struct platform_work_queue
+{
+  uint32 volatile           CompletionCount;
+  uint32 volatile           CompletionGoal;
+  
+  uint32 volatile           NextEntryToWrite;
+  uint32 volatile           NextEntryToRead;
+  HANDLE                    SemaphoreHandle;
+  platform_work_queue_entry Entries[256];
+
+};
+
+internal void Win32AddEntry(platform_work_queue *Queue, platform_work_queue_callback *Callback, void *Data)
+{
+  uint32 NewNextEntryToWrite = (Queue->NextEntryToWrite + 1) % ArrayCount(Queue->Entries);
+  Assert(NewNextEntryToWrite != Queue->NextEntryToRead);
+  
+  platform_work_queue_entry *Entry = Queue->Entries + Queue->NextEntryToWrite;
+  Entry->Data = Data;
+  Entry->Callback = Callback;
+  ++Queue->CompletionGoal;
+  _WriteBarrier();
+  _mm_sfence();
+  Queue->NextEntryToWrite = NewNextEntryToWrite;
+  ReleaseSemaphore(Queue->SemaphoreHandle, 1 , 0);
+}
+
+internal bool32 Win32DoNextWorkQueueEntry(platform_work_queue *Queue)
+{
+  bool32 WeShouldSleep = false;
+
+  uint32 OriginalNextEntryToRead = Queue->NextEntryToRead;
+  uint32 NewNextEntryToRead = (OriginalNextEntryToRead + 1) % ArrayCount(Queue->Entries);
+  if(OriginalNextEntryToRead != Queue->NextEntryToWrite)
+  {
+    uint32 Index = InterlockedCompareExchange((LONG volatile *)&Queue->NextEntryToRead,
+					      NewNextEntryToRead,
+					      OriginalNextEntryToRead);
+    if(Index == OriginalNextEntryToRead)
+    {
+      platform_work_queue_entry Entry = Queue->Entries[Index];
+      Entry.Callback(Queue, Entry.Data);
+      InterlockedIncrement((LONG volatile *)&Queue->CompletionCount);
+    }
+  }
+  else
+  {
+    WeShouldSleep = true;
+  }
+
+  return WeShouldSleep;
+}
+
+internal void Win32CompleteAllWork(platform_work_queue *Queue)
+{
+  while(Queue->CompletionGoal != Queue->CompletionCount)
+  {
+    Win32DoNextWorkQueueEntry(Queue);
+  }
+
+  Queue->CompletionGoal = 0;
+  Queue->CompletionCount = 0;
+}
+
+
+internal PLATFORM_WORK_QUEUE_CALLBACK(DoWorkWorker)
+{
+  char Buffer[255];
+  sprintf_s(Buffer, "Theard %u: %s /n", GetCurrentThreadId(), (char *)Data);
+  OutputDebugStringA(Buffer);
+}
+
+struct win32_theard_info
+{
+  HANDLE SemaphoreHandle;
+  int LogicalTheardIndex;
+  platform_work_queue *Queue;
+};
+
+DWORD WINAPI TheardProc(LPVOID lpParameter)
+{
+  win32_theard_info *TheardInfo = (win32_theard_info *)lpParameter;
+
+  for(;;)
+  {
+    if(Win32DoNextWorkQueueEntry(TheardInfo->Queue))
+    {
+      WaitForSingleObjectEx(TheardInfo->Queue->SemaphoreHandle, INFINITE, false);
+    }
+  }
+}
+
 
 int WINAPI wWinMain(HINSTANCE Instance,
 		    HINSTANCE PrevInstance,
@@ -896,6 +994,38 @@ int WINAPI wWinMain(HINSTANCE Instance,
   Win32ResizeDIBSection(&GlobalBackBuffer , 960, 540);
   thread_context Thread = {};
 
+  win32_theard_info TheardInfo[3];
+  platform_work_queue Queue = {};
+  
+  uint32 InitialCount = 0;
+  uint32 TheardCount = ArrayCount(TheardInfo);
+  Queue.SemaphoreHandle = CreateSemaphoreEx(0, InitialCount, TheardCount, 0, 0, SEMAPHORE_ALL_ACCESS);
+  
+  for(uint32 TheardIndex = 0; TheardIndex < TheardCount; ++TheardIndex)
+  {
+    win32_theard_info *Info = TheardInfo + TheardIndex;
+    Info->LogicalTheardIndex = TheardIndex;
+    Info->Queue = &Queue;
+
+    DWORD TheardID;
+    HANDLE TheardHandle = CreateThread(0, 0, TheardProc, Info, 0, &TheardID);
+    CloseHandle(TheardHandle);
+  }
+
+  Win32AddEntry(&Queue, DoWorkWorker, "String 0");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 1");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 2");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 3");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 4");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 5");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 6");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 7");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 8");
+  Win32AddEntry(&Queue, DoWorkWorker, "String 9");
+
+
+  Win32CompleteAllWork(&Queue);
+  
   WindowClass.style = CS_HREDRAW | CS_VREDRAW;
   WindowClass.lpfnWndProc = MainWindowCallback;
   WindowClass.hInstance = Instance;
@@ -993,6 +1123,9 @@ int WINAPI wWinMain(HINSTANCE Instance,
       GameMemory.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile;
       GameMemory.PermanentStorage = Win32State.GameMemoryBlock;
       GameMemory.TransientStorage = ((uint8 *) GameMemory.PermanentStorage + GameMemory.PermanentStorageSize);
+      GameMemory.RenderQueue = &Queue;
+      GameMemory.PlatformAddEntry = Win32AddEntry;
+      GameMemory.PlatformCompleteAllWork = Win32CompleteAllWork;
 
       for(int ReplayIndex = 0; ReplayIndex < ArrayCount(Win32State.ReplayBuffers); ++ReplayIndex)
       {

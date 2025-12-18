@@ -82,50 +82,41 @@ inline v4 SRGBBilinearBlend(bilinear_sample TexelSample, real32 fX, real32 fY)
   return Texel;
 }
 
-internal void DrawRectangle(loaded_bitmap *Buffer, v2 vMin, v2 vMax, v4 Color)
+internal void DrawRectangle(loaded_bitmap *Buffer, v2 vMin, v2 vMax, v4 Color, rectangle2i ClipRect, bool32 Even)
 {
   real32 R = Color.r;
   real32 G = Color.g;
   real32 B = Color.b;
   real32 A = Color.a;
-  
-  int32 MinX = RoundReal32ToInt32(vMin.x);
-  int32 MaxX = RoundReal32ToInt32(vMax.x);
-  int32 MinY = RoundReal32ToInt32(vMin.y);
-  int32 MaxY = RoundReal32ToInt32(vMax.y);
 
-  if(MinX < 0)
+  rectangle2i FillRect;
+  
+  FillRect.MinX = RoundReal32ToInt32(vMin.x);
+  FillRect.MaxX = RoundReal32ToInt32(vMax.x);
+  FillRect.MinY = RoundReal32ToInt32(vMin.y);
+  FillRect.MaxY = RoundReal32ToInt32(vMax.y);
+
+  FillRect = Intersect(FillRect, ClipRect);
+  if(!Even == (FillRect.MinY & 1))
   {
-    MinX = 0;
-  }
-  if(MaxX > Buffer->Width)
-  {
-    MaxX = Buffer->Width;
-  }
-  if(MinY < 0)
-  {
-    MinY = 0;
-  }
-  if(MaxY > Buffer->Height)
-  {
-    MaxY = Buffer->Height;
+    FillRect.MinY += 1;
   }
  
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * A) << 24 |
-			  RoundReal32ToUInt32(255 * R) << 16 |
-			  RoundReal32ToUInt32(255 * G) << 8 |
-			  RoundReal32ToUInt32(255 *B) << 0);
+			    RoundReal32ToUInt32(255 * R) << 16 |
+			    RoundReal32ToUInt32(255 * G) << 8 |
+			    RoundReal32ToUInt32(255 *B) << 0);
   
-  uint8* Row = ((uint8 *)Buffer->Memory + MinX*BITMAP_BYTES_PER_PIXEL + MinY*Buffer->Pitch); 
+  uint8* Row = ((uint8 *)Buffer->Memory + FillRect.MinX*BITMAP_BYTES_PER_PIXEL + FillRect.MinY*Buffer->Pitch); 
 
-  for(int Y = MinY; Y < MaxY; ++Y)
+  for(int Y = FillRect.MinY; Y < FillRect.MaxY; Y += 2)
   {
     uint32 *Pixel = (uint32 *)Row;
-    for(int X = MinX; X < MaxX; ++X)
+    for(int X = FillRect.MinX; X < FillRect.MaxX; ++X)
     {
       *Pixel++ = Color32;
     }
-    Row += Buffer->Pitch;
+    Row += 2*Buffer->Pitch;
   }
 }
 
@@ -347,7 +338,7 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 }
 
 internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
-				loaded_bitmap *Texture, real32 PixelsToMeter)
+				   loaded_bitmap *Texture, real32 PixelsToMeter, rectangle2i ClipRect, bool32 Even)
 {
   BEGIN_TIMED_BLOCK(DrawRectangleQuickly);
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
@@ -355,22 +346,14 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
 			    RoundReal32ToUInt32(255 * Color.g) << 8 |
 			    RoundReal32ToUInt32(255 * Color.b) << 0);
 
-  int WidthMax = (Buffer->Width - 1) - 3;
-  int HeightMax = (Buffer->Height - 1) - 3;
-
   v2 P[4] = {Origin, Origin + XAxis, Origin + XAxis + YAxis, Origin + YAxis};
 
-  int XMin = WidthMax;
-  int XMax = 0;
-  int YMin = HeightMax;
-  int YMax = 0;
-
-  real32 InvWidthMax = 1.0f / (real32)WidthMax;
-  real32 InvHeightMax = 1.0f / (real32)HeightMax;
+  //real32 InvWidthMax = 1.0f / (real32)WidthMax;
+  //real32 InvHeightMax = 1.0f / (real32)HeightMax;
 
   real32 OriginZ = 0.0f;
   real32 OriginY = (Origin + 0.5f*XAxis + 0.5f*YAxis).y;
-  real32 FixedCastY = InvHeightMax*OriginY;
+  //real32 FixedCastY = InvHeightMax*OriginY;
   
   real32 XAxisLength = Length(XAxis);
   real32 YAxisLength = Length(YAxis);
@@ -385,27 +368,47 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
 
   //Premuliply color
   Color.rgb *= Color.a;
+
+  rectangle2i FillRect = InvertedInfinityRectangle();
   
   for(uint32 Index = 0; Index < ArrayCount(P); ++Index)
   {
     v2 TestP = P[Index];
     int FloorX = FloorReal32ToInt32(P[Index].x);
-    int CeilX = CeilReal32ToInt32(P[Index].x);
+    int CeilX = CeilReal32ToInt32(P[Index].x) + 1;
     int FloorY = FloorReal32ToInt32(P[Index].y);
-    int CeilY = CeilReal32ToInt32(P[Index].y);
+    int CeilY = CeilReal32ToInt32(P[Index].y) + 1;
 
     
-    if(XMin > FloorX) {XMin = FloorX;}
-    if(XMax < CeilX) {XMax = CeilX;}
-    if(YMin > FloorY) {YMin = FloorY;}
-    if(YMax < CeilY) {YMax = CeilY;}
+    if(FillRect.MinX > FloorX) {FillRect.MinX = FloorX;}
+    if(FillRect.MaxX < CeilX) {FillRect.MaxX = CeilX;}
+    if(FillRect.MinY > FloorY) {FillRect.MinY = FloorY;}
+    if(FillRect.MaxY < CeilY) {FillRect.MaxY = CeilY;}
     
   }
 
-  if(XMax > WidthMax) {XMax = WidthMax;}
-  if(XMin < 0) {XMin = 0;}
-  if(YMax > HeightMax) {YMax = HeightMax;}
-  if(YMin < 0) {YMin = 0;}
+  FillRect = Intersect(ClipRect, FillRect);
+
+  if(!Even == (FillRect.MinY & 1))
+  {
+    FillRect.MinY += 1;
+  }
+  //This is for keeping pixels aligned by four
+  int FillWidth = FillRect.MaxX - FillRect.MinX;
+  int FillWidthAlign = FillWidth & 3;
+  __m128i StartUpClipMask = _mm_set1_epi8(-1);
+  if(FillWidthAlign > 0)
+  {
+    int Adjustment = 4 - FillWidthAlign;
+    switch(Adjustment)
+    {
+      case 1: {StartUpClipMask = _mm_slli_si128(StartUpClipMask, 4*1);} break;
+      case 2: {StartUpClipMask = _mm_slli_si128(StartUpClipMask, 4*2);} break;
+      case 3: {StartUpClipMask = _mm_slli_si128(StartUpClipMask, 4*3);} break;
+    }
+    FillWidth += Adjustment;
+    FillRect.MinX = FillRect.MaxX - FillWidth;
+  }
   
   v2 nXAxis = InvXAxisLengthSq*XAxis;
   v2 nYAxis = InvYAxisLengthSq*YAxis;
@@ -432,12 +435,13 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
   __m128 Four_4x = _mm_set1_ps(4.0f);
   __m128i TexturePitch4X = _mm_set1_epi32(Texture->Pitch);
   
-  uint8* Row = ((uint8 *)Buffer->Memory + XMin*BITMAP_BYTES_PER_PIXEL + YMin*Buffer->Pitch);
+  uint8* Row = ((uint8 *)Buffer->Memory + FillRect.MinX*BITMAP_BYTES_PER_PIXEL + FillRect.MinY*Buffer->Pitch);
   void* TexMem = Texture->Memory;
   int32 TexturePitch = Texture->Pitch;
+  int32 RowAdvance = Buffer->Pitch*2;
   
   
-  for(int Y = YMin; Y < YMax; ++Y)
+  for(int Y = FillRect.MinY; Y < FillRect.MaxY; Y += 2)
   { 
     uint32 *Pixel = (uint32 *)Row;
     
@@ -445,12 +449,14 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
     PixelPy = _mm_sub_ps(PixelPy, Originy_4x);
 
     
-    __m128 PixelPx = _mm_set_ps(((real32)XMin + 3), ((real32)XMin + 2),
-				((real32)XMin + 1), ((real32)XMin + 0));
+    __m128 PixelPx = _mm_set_ps(((real32)FillRect.MinX + 3), ((real32)FillRect.MinX + 2),
+				((real32)FillRect.MinX + 1), ((real32)FillRect.MinX + 0));
 
     PixelPx = _mm_sub_ps(PixelPx, Originx_4x);
+
+    __m128i ClipMask = StartUpClipMask;
     
-    for(int XI = XMin; XI <= XMax; XI += 4)
+    for(int XI = FillRect.MinX; XI < FillRect.MaxX; XI += 4)
     {
       __m128 Blendedr = _mm_set1_ps(0.0f);
       __m128 Blendedg = _mm_set1_ps(0.0f);
@@ -468,6 +474,8 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
       __m128i WriteMask = _mm_castps_si128(_mm_and_ps(_mm_and_ps(_mm_cmpge_ps(U, Zero), _mm_cmple_ps(U, One)),
 						      _mm_and_ps(_mm_cmpge_ps(V, Zero), _mm_cmple_ps(V, One))));
 
+      WriteMask = _mm_and_si128(WriteMask, ClipMask);
+      
       U = _mm_min_ps(_mm_max_ps(U, Zero), One);
       V = _mm_min_ps(_mm_max_ps(V, Zero), One);
 
@@ -625,13 +633,15 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
 
       Pixel += 4;
       PixelPx = _mm_add_ps(PixelPx, Four_4x);
+      ClipMask = _mm_set1_epi8(-1);
+
     }
-    Row += Buffer->Pitch;
+    Row += RowAdvance;
   }
   END_TIMED_BLOCK(DrawRectangleQuickly);
 }
 
-
+/*
 internal void DrawRectangleOutline(loaded_bitmap* Buffer, v2 vMin, v2 vMax, v3 Color, real32 T = 2.0f)
 {
   //Top and Bottom
@@ -641,7 +651,7 @@ internal void DrawRectangleOutline(loaded_bitmap* Buffer, v2 vMin, v2 vMax, v3 C
   DrawRectangle(Buffer, v2{vMin.x - T, vMin.y - T}, v2{vMin.x + T, vMax.y + T}, ToV4(Color, 1.0f));
   DrawRectangle(Buffer, v2{vMax.x - T, vMin.y - T}, v2{vMax.x + T, vMax.y + T}, ToV4(Color, 1.0f));
 }
-
+*/
 
 internal void DrawBitmap(loaded_bitmap *Buffer, loaded_bitmap *Bitmap, real32 realX, real32 realY, real32 CAlpha = 1.0f)
 {
@@ -773,7 +783,7 @@ internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBu
   return Result;
 }
 
-internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget)
+internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget, rectangle2i ClipRect, bool Even)
 {
   BEGIN_TIMED_BLOCK(RenderGroupToOutput);
 
@@ -792,7 +802,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      {
        render_entry_clear *Entry = (render_entry_clear *)Data;
 
-       DrawRectangle(OutputTarget, v2{0, 0}, v2{(real32)OutputTarget->Width, (real32)OutputTarget->Height}, Entry->Color);
+       DrawRectangle(OutputTarget, v2{0, 0}, v2{(real32)OutputTarget->Width, (real32)OutputTarget->Height}, Entry->Color, ClipRect, Even);
        
        BaseAdress += sizeof(*Entry);
      } break;
@@ -806,10 +816,9 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
 
        DrawBitmap(OutputTarget, Entry->Bitmap, P.x, P.y);
 #else
-
        DrawRectangleQuickly(OutputTarget, Basis.P, Basis.Scale*v2{Entry->Size.x, 0},
-			 Basis.Scale*v2{0, Entry->Size.y}, Entry->Color,
-			 Entry->Bitmap, 1.0f / PixelsToMeters);
+			    Basis.Scale*v2{0, Entry->Size.y}, Entry->Color,
+			    Entry->Bitmap, 1.0f / PixelsToMeters, ClipRect, Even);
 #endif
        BaseAdress += sizeof(*Entry);
        
@@ -819,7 +828,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      {
        render_entry_rectangle *Entry = (render_entry_rectangle *)Data;
        entity_basis_result Basis = GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim);
-       DrawRectangle(OutputTarget, Basis.P, Basis.P + Basis.Scale*Entry->Dim, Entry->Color);
+       DrawRectangle(OutputTarget, Basis.P, Basis.P + Basis.Scale*Entry->Dim, Entry->Color, ClipRect, Even);
 
        BaseAdress += sizeof(*Entry);
      } break;
@@ -827,6 +836,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      case RenderGroupEntryType_render_entry_coordinate_system:
      {
        render_entry_coordinate_system *Entry = (render_entry_coordinate_system *)Data;
+#if 0
        v2 Dim = {4, 4};
        v2 P = Entry->Origin;
        DrawRectangle(OutputTarget, P - Dim, P + Dim, Entry->Color);
@@ -844,7 +854,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
        DrawRectangleSlow(OutputTarget, Entry->Origin, Entry->XAxis, Entry->YAxis,
 			 Entry->Color, Entry->Texture, Entry->NormalMap,
 			 Entry->Top, Entry->Middle, Entry->Bottom, 1.0f / PixelsToMeters);
-
+#endif
        BaseAdress += sizeof(*Entry);
      } break;
 
@@ -853,6 +863,79 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
  }
  END_TIMED_BLOCK(RenderGroupToOutput);
 }
+
+struct tile_render_work
+{
+  render_group  *RenderGroup;
+  loaded_bitmap *OutputTarget;
+  rectangle2i   ClipRect;
+};
+
+internal PLATFORM_WORK_QUEUE_CALLBACK(DoTiledRenderWork)
+{
+  tile_render_work *Work = (tile_render_work *)Data;
+  
+  RenderGroupToOutput(Work->RenderGroup, Work->OutputTarget, Work->ClipRect, true);
+  RenderGroupToOutput(Work->RenderGroup, Work->OutputTarget, Work->ClipRect, false);      
+}
+
+internal void TiledRenderGroupToOutput(platform_work_queue *RenderQueue, render_group *RenderGroup, loaded_bitmap *OutputTarget)
+{
+  int const TileCountX = 4;
+  int const TileCountY = 4;
+
+  int WorkCount = 0;
+
+  tile_render_work WorkArray[TileCountX*TileCountY];
+
+  int TileWidth = OutputTarget->Width / TileCountX;
+  int TileHeight = OutputTarget->Height / TileCountY;
+  
+  for(int TileY = 0; TileY < TileCountY; ++TileY)
+  {
+    for(int TileX = 0; TileX < TileCountX; ++TileX)
+    {
+      tile_render_work *Work = WorkArray + WorkCount++;
+      rectangle2i ClipRect;
+      ClipRect.MinX = TileX*TileWidth + 4;
+      ClipRect.MaxX = ClipRect.MinX + TileWidth - 4;
+      ClipRect.MinY = TileY*TileHeight + 4;
+      ClipRect.MaxY = ClipRect.MinY + TileHeight - 4;
+
+      Work->RenderGroup = RenderGroup;
+      Work->OutputTarget = OutputTarget;
+      Work->ClipRect = ClipRect;
+
+      PlatformAddEntry(RenderQueue, DoTiledRenderWork, Work);
+    }
+  }
+  PlatformCompleteAllWork(RenderQueue);
+}
+
+#if 0
+internal void TiledRenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget)
+{
+  int TileCountX = 4;
+  int TileCountY = 4;
+
+  int TileWidth = OutputTarget->Width / TileCountX;
+  int TileHeight = OutputTarget->Height / TileCountY;
+  
+  for(int TileY = 0; TileY < TileCountY; ++TileY)
+  {
+    for(int TileX = 0; TileX < TileCountX; ++TileX)
+    {
+      rectangle2i ClipRect;
+      ClipRect.MinX = TileX*TileWidth + 4;
+      ClipRect.MaxX = ClipRect.MinX + TileWidth - 4;
+      ClipRect.MinY = TileY*TileHeight + 4;
+      ClipRect.MaxY = ClipRect.MinY + TileHeight - 4;
+      RenderGroupToOutput(RenderGroup,OutputTarget, ClipRect, true);
+      RenderGroupToOutput(RenderGroup,OutputTarget, ClipRect, false);      
+    }
+  }
+}
+#endif
 
 #define PushRenderElement(Group, Type) (Type*)PushRenderElement_(Group, sizeof(Type), RenderGroupEntryType_##Type)
 inline void *PushRenderElement_(render_group *Group, uint32 Size, render_group_entry_type Type)

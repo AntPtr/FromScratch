@@ -237,7 +237,7 @@ internal loaded_bitmap DEBUGLoadBMP(thread_context *Theard, debug_platform_read_
 			 ((uint32(Texel.b + 0.5f)) << 0));
       }
     }
-    Result.Memory = Pixel;
+  Result.Memory = Pixel;
   Result.Width = BitMap->Width;
   Result.Height = BitMap->Height;
   Result.WidthOverHeight =  SafeRatio0((real32)Result.Width, (real32)Result.Height);
@@ -523,8 +523,8 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
       }
     }
   }
+  TiledRenderGroupToOutput(TranState->RenderQueue, RenderGroup, Buffer);
 #endif
-  RenderGroupToOutput(RenderGroup, Buffer);
   EndTemporaryMemory(GroundMemory);
 }
 
@@ -676,7 +676,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->XOffset = 0;
     GameState->YOffset = 0;*/
     InitializeArena(&GameState->WorldArena, Memory->PermanentStorageSize - sizeof(game_state), (uint8 *)Memory->PermanentStorage + sizeof(game_state));
- 
+
+    PlatformAddEntry = Memory->PlatformAddEntry;
+    PlatformCompleteAllWork = Memory->PlatformCompleteAllWork;
     uint32 TilesPerWidth = 17;
     uint32 TilesPerHeight = 9;
 
@@ -904,6 +906,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     TranState->GroundBufferCount = 32;
     TranState->GroundBuffers = PushArray(&TranState->TranArena, TranState->GroundBufferCount, ground_buffer);
+    TranState->RenderQueue = Memory->RenderQueue;
     for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
     {
       ground_buffer *GroundBuffer = TranState->GroundBuffers + GroundBufferIndex;
@@ -911,7 +914,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       GroundBuffer->P = NullPosition();
     }
     GameState->TestDiffuse = MakeEmptyBitmap(&TranState->TranArena, 256, 256, 0);
-    DrawRectangle(&GameState->TestDiffuse, v2{0, 0}, V2i(GameState->TestDiffuse.Width, GameState->TestDiffuse.Height), v4{0.4f, 0.4f, 0.4f, 1.0f});
+    /*DrawRectangle(&GameState->TestDiffuse, v2{0, 0}, V2i(GameState->TestDiffuse.Width, GameState->TestDiffuse.Height), v4{0.4f, 0.4f, 0.4f, 1.0f});*/
+    
     GameState->TestNormal = MakeEmptyBitmap(&TranState->TranArena, GameState->TestDiffuse.Width, GameState->TestDiffuse.Height, 0);
     MakeSphereNormalMap(&GameState->TestNormal, 0.0f);
     MakeSphereDiffuseMap(&GameState->TestDiffuse);
@@ -1390,7 +1394,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
   Entry->Point = v2{X, 0.5f};
 #endif
-  RenderGroupToOutput(RenderGroup, DrawBuffer);
+  TiledRenderGroupToOutput(TranState->RenderQueue, RenderGroup, DrawBuffer);
   
   EndSim(SimRegion, GameState);
   EndTemporaryMemory(SimMemory);
