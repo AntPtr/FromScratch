@@ -466,10 +466,10 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer ,int Width, i
   Buffer->BitMapInfo.bmiHeader.biBitCount = 32;
   Buffer->BitMapInfo.bmiHeader.biCompression = BI_RGB;
 
-  int BitMapMemorySize = (Buffer->Width * Buffer->Height) * Buffer->BytesPerPixel;
+  Buffer->Pitch = Align16(Width*Buffer->BytesPerPixel);
+  int BitMapMemorySize = (Buffer->Pitch*Buffer->Height)*Buffer->BytesPerPixel;
   Buffer->Memory = VirtualAlloc(0, BitMapMemorySize, MEM_COMMIT, PAGE_READWRITE);
 
-  Buffer->Pitch = Width * Buffer->BytesPerPixel;
 }
 
 internal void Win32DisplayBufferWindow(win32_offscreen_buffer *Buffer , int WindowWidth, int WindowHeigth, HDC DeviceContex, int  X, int  Y, int Width, int Heigth)

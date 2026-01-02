@@ -68,6 +68,7 @@ typedef double real64;
 #endif
 #define InvalidCodePath Assert(!"InvalidCodePath")
 #define InvalidDefaultCase default: {InvalidCodePath;} break
+#define Align16(value) ((value + 15) & ~15)
 
 struct thread_context
 {

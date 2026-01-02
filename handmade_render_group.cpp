@@ -151,6 +151,132 @@ inline v3 SampleFromEnvMap(v2 ScreenSpaceUV, v3 SampleDirection, real32 Roughnes
   return Result;
 }
 
+#define PushRenderElement(Group, Type) (Type*)PushRenderElement_(Group, sizeof(Type), RenderGroupEntryType_##Type)
+inline void *PushRenderElement_(render_group *Group, uint32 Size, render_group_entry_type Type)
+{
+  void *Result = 0;
+  Size += sizeof(render_group_entry_header);
+  
+  if((Group->PushBufferSize + Size) < Group->MaxPushBufferSize)
+  {
+     render_group_entry_header *Header = (render_group_entry_header*)(Group->PushBufferBase + Group->PushBufferSize);
+    Header->Type = Type;
+    Result = (uint8*)Header + sizeof(*Header);
+    Group->PushBufferSize += Size;
+  }
+  else
+  {
+    InvalidCodePath;
+  }
+  
+  return Result;
+}
+struct entity_basis_result
+{
+  v2 P;
+  real32 Scale;
+  bool32 Valid;
+};
+
+entity_basis_result GetRenderEntityBasisP(render_transform *Transform, v3 OriginalP)
+{
+  entity_basis_result Result = {};
+  
+  v3 P = OriginalP + Transform->OffsetP;
+
+  real32 DistanceToPz = Transform->CameraDistanceAboveTarget - P.z;
+  real32 NearClipPlane = 0.20f;
+
+  v3 RawXY = V3(P.xy, 1.0f);
+  if(DistanceToPz > NearClipPlane)
+  {
+    v3 ProjectedXY = (1.0f / DistanceToPz)*Transform->FocalLength*RawXY;
+    Result.P = Transform->ScreenCenter + Transform->MetersToPixels*ProjectedXY.xy;
+    Result.Scale = Transform->MetersToPixels*ProjectedXY.z;
+    Result.Valid = true;
+  } 
+  return Result;
+}
+
+inline void PushBitmap(render_group *Group, loaded_bitmap *Bitmap, v3 Offset, real32 Height, v4 Color = v4{1, 1, 1, 1})
+{
+  v2 Size = v2{Height*Bitmap->WidthOverHeight, Height};
+  v2 Align = Hadamard(Bitmap->AlignPercentage, Size);
+  v3 P = Offset - V3(Align, 0);
+  
+  entity_basis_result Basis =  GetRenderEntityBasisP(&Group->Transform, P);
+  if(Basis.Valid)
+  {
+    render_entry_bitmap *Entry = PushRenderElement(Group, render_entry_bitmap);
+    if(Entry)
+    {
+      Entry->Size = Basis.Scale*Size;
+      Entry->Bitmap = Bitmap;
+      Entry->P = Basis.P;
+      Entry->Color = Color*Group->GlobalAlpha;
+    }
+  }
+}
+
+inline void PushRect(render_group *Group, v3 Offset, v2 Dim, v4 Color)
+{
+  v3 P = Offset - V3(0.5f*Dim, 0);
+  entity_basis_result Basis = GetRenderEntityBasisP(&Group->Transform, P);
+  if(Basis.Valid)
+  {
+    render_entry_rectangle *Rect = PushRenderElement(Group, render_entry_rectangle);
+    if(Rect)
+    {
+      Rect->P = Basis.P;
+      Rect->Color = Color;
+      Rect->Dim = Basis.Scale*Dim;
+    }
+  }
+}
+
+inline void PushRectOutline(render_group *Group, v3 Offset, v2 Dim, v4 Color)
+{
+  real32 Thickness = 0.1f;
+    
+  PushRect(Group, Offset - v3{0, 0.5f*Dim.y, 0}, v2{Dim.x, Thickness}, Color);
+  PushRect(Group, Offset + v3{0, 0.5f*Dim.y, 0}, v2{Dim.x, Thickness}, Color);
+
+  PushRect(Group, Offset - v3{0.5f*Dim.x, 0, 0}, v2{Thickness, Dim.y}, Color);
+  PushRect(Group, Offset + v3{0.5f*Dim.x, 0, 0}, v2{Thickness, Dim.y}, Color);  
+}
+
+inline void Clear(render_group *Group, v4 Color)
+{
+  render_entry_clear *Piece = PushRenderElement(Group, render_entry_clear);
+  if(Piece)
+  {
+    Piece->Color = Color;
+  }
+}
+
+inline void CoordinateSystem(render_group *Group, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
+			     loaded_bitmap *Texture, loaded_bitmap *NormalMap,
+			     environment_map *Top, environment_map *Middle, environment_map *Bottom) 
+{
+#if 0
+  render_entry_coordinate_system *Piece = PushRenderElement(Group, render_entry_coordinate_system);
+  entity_basis_result Basis = GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim);
+  if(Basis.Valid)
+  {
+    if(Piece)
+    {
+      Piece->Origin = Origin;
+      Piece->XAxis = XAxis;
+      Piece->YAxis = YAxis;
+      Piece->Color = Color;
+      Piece->Texture = Texture;
+      Piece->NormalMap = NormalMap;
+      Piece->Top = Top;
+      Piece->Middle = Middle;
+      Piece->Bottom = Bottom;
+    }
+#endif    
+}
 internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
 				loaded_bitmap *Texture, loaded_bitmap *NormalMap,
 				environment_map *Top, environment_map *Middle, environment_map *Bottom, real32 PixelsToMeter)
@@ -396,18 +522,36 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
   //This is for keeping pixels aligned by four
   int FillWidth = FillRect.MaxX - FillRect.MinX;
   int FillWidthAlign = FillWidth & 3;
-  __m128i StartUpClipMask = _mm_set1_epi8(-1);
-  if(FillWidthAlign > 0)
-  {
-    int Adjustment = 4 - FillWidthAlign;
-    switch(Adjustment)
+  
+  __m128i StartClipMask = _mm_set1_epi8(-1);
+  __m128i EndClipMask = _mm_set1_epi8(-1);
+
+  __m128i StartClipMasks[] =
     {
-      case 1: {StartUpClipMask = _mm_slli_si128(StartUpClipMask, 4*1);} break;
-      case 2: {StartUpClipMask = _mm_slli_si128(StartUpClipMask, 4*2);} break;
-      case 3: {StartUpClipMask = _mm_slli_si128(StartUpClipMask, 4*3);} break;
-    }
-    FillWidth += Adjustment;
-    FillRect.MinX = FillRect.MaxX - FillWidth;
+      _mm_slli_si128(StartClipMask, 4*0),
+      _mm_slli_si128(StartClipMask, 4*1),
+      _mm_slli_si128(StartClipMask, 4*2),
+      _mm_slli_si128(StartClipMask, 4*3)
+    };
+
+  __m128i EndClipMasks[] =
+    {
+      _mm_srli_si128(EndClipMask, 4*0),
+      _mm_srli_si128(EndClipMask, 4*3),
+      _mm_srli_si128(EndClipMask, 4*2),
+      _mm_srli_si128(EndClipMask, 4*1)
+    };
+
+  if(FillRect.MinX & 3)
+  {
+    FillRect.MinX = FillRect.MinX & ~3;
+    StartClipMask = StartClipMasks[FillRect.MinX & 3];
+  }
+
+  if(FillRect.MaxX & 3)
+  {
+    FillRect.MaxX = (FillRect.MaxX & ~3) + 4;
+    StartClipMask = StartClipMasks[FillRect.MaxX & 3];
   }
   
   v2 nXAxis = InvXAxisLengthSq*XAxis;
@@ -454,7 +598,7 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
 
     PixelPx = _mm_sub_ps(PixelPx, Originx_4x);
 
-    __m128i ClipMask = StartUpClipMask;
+    __m128i ClipMask = StartClipMask;
     
     for(int XI = FillRect.MinX; XI < FillRect.MaxX; XI += 4)
     {
@@ -633,7 +777,14 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
 
       Pixel += 4;
       PixelPx = _mm_add_ps(PixelPx, Four_4x);
-      ClipMask = _mm_set1_epi8(-1);
+      if((XI + 8) < FillRect.MaxX)
+      {
+	ClipMask = _mm_set1_epi8(-1);
+      }
+      else
+      {
+	ClipMask = EndClipMask;
+      }
 
     }
     Row += RowAdvance;
@@ -731,55 +882,30 @@ internal void DrawBitmap(loaded_bitmap *Buffer, loaded_bitmap *Bitmap, real32 re
   }
 }
 
-struct entity_basis_result
-{
-  v2 P;
-  real32 Scale;
-  bool32 Valid;
-};
-
-entity_basis_result GetRenderEntityBasisP(render_group *RenderGroup, render_entity_basis *EntityBasis, v2 ScreenDim)
-{
-  v2 ScreenCenter = 0.5f*ScreenDim;
-  entity_basis_result Result = {};
-  v3 EntityBaseP = EntityBasis->Basis->P;
-
-  real32 DistanceToPz = RenderGroup->RenderCamera.CameraDistanceAboveTarget - EntityBaseP.z;
-  real32 NearClipPlane = 0.20f;
-
-  v3 RawXY = V3(EntityBaseP.xy + EntityBasis->Offset.xy, 1.0f);
-  if(DistanceToPz > NearClipPlane)
-  {
-    v3 ProjectedXY = (1.0f / DistanceToPz)*RenderGroup->RenderCamera.FocalLength*RawXY;
-    Result.P = ScreenCenter + RenderGroup->MetersToPixels*ProjectedXY.xy;
-    Result.Scale = RenderGroup->MetersToPixels*ProjectedXY.z;
-    Result.Valid = true;
-  }
-  
-  return Result;
-}
-
 internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBufferSize, uint32 ResPixelX, uint32 ResPixelY)
 {
   render_group *Result = PushStruct(Arena, render_group);
   Result->PushBufferBase = (uint8 *)PushSize(Arena, MaxPushBufferSize);
-  Result->DefaultBasis = PushStruct(Arena, render_basis);
-  Result->DefaultBasis->P = v3{0, 0, 0};
-
+ 
   Result->MaxPushBufferSize = MaxPushBufferSize;
   Result->PushBufferSize = 0;
-  Result->GlobalAlpha = 1.0f;
-  Result->GameCamera.FocalLength = 0.6f;
-  Result->GameCamera.CameraDistanceAboveTarget = 9.0f;
-  
-  Result->RenderCamera = Result->GameCamera;
+  Result->GlobalAlpha = 1.0f;  
   //Result->RenderCamera.CameraDistanceAboveTarget = 30.0f;
   
   real32 WidthOfMonitor =  0.635f;
-  Result->MetersToPixels = (real32)ResPixelX*WidthOfMonitor;
-  real32 PixelsToMeters = 1.0f / Result->MetersToPixels;
+  real32 MetersToPixels = (real32)ResPixelX*WidthOfMonitor;
+  real32 PixelsToMeters = 1.0f / MetersToPixels;
+  Result->Transform.MetersToPixels = MetersToPixels; 
   Result->MonitorHalfDimInMeters = v2{0.5f*ResPixelX*PixelsToMeters,
-                                      0.5f*ResPixelY*PixelsToMeters};
+				      0.5f*ResPixelY*PixelsToMeters};
+  
+  Result->Transform.ScreenCenter = v2{0.5f*ResPixelX,
+				      0.5f*ResPixelY};
+  
+  Result->Transform.FocalLength = 0.6f;
+  Result->Transform.CameraDistanceAboveTarget = 9.0f;
+  Result->Transform.OffsetP = v3{0.0f, 0.0f, 0.0f};
+  Result->Transform.Scale = 1.0f;
   return Result;
 }
 
@@ -787,9 +913,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
 {
   BEGIN_TIMED_BLOCK(RenderGroupToOutput);
 
-  v2 ScreenDim = v2{(real32)OutputTarget->Width, (real32)OutputTarget->Height};
-
-  real32 PixelsToMeters = 1.0f / RenderGroup->MetersToPixels;
+  real32 NullPixelsToMeters = 1.0f;
  for(uint32 BaseAdress = 0; BaseAdress < RenderGroup->PushBufferSize; )
  {
    render_group_entry_header *Header = (render_group_entry_header *)(RenderGroup->PushBufferBase + BaseAdress);
@@ -810,15 +934,14 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      case RenderGroupEntryType_render_entry_bitmap:
      {
        render_entry_bitmap *Entry = (render_entry_bitmap *)Data;
-       entity_basis_result Basis =  GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim);
-       Assert(Entry->Bitmap);
 #if 0
-
        DrawBitmap(OutputTarget, Entry->Bitmap, P.x, P.y);
 #else
-       DrawRectangleQuickly(OutputTarget, Basis.P, Basis.Scale*v2{Entry->Size.x, 0},
-			    Basis.Scale*v2{0, Entry->Size.y}, Entry->Color,
-			    Entry->Bitmap, 1.0f / PixelsToMeters, ClipRect, Even);
+       DrawRectangleQuickly(OutputTarget, Entry->P,
+			    v2{Entry->Size.x, 0},
+			    v2{0, Entry->Size.y},
+			    Entry->Color,
+			    Entry->Bitmap, NullPixelsToMeters, ClipRect, Even);
 #endif
        BaseAdress += sizeof(*Entry);
        
@@ -827,8 +950,7 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      case RenderGroupEntryType_render_entry_rectangle:
      {
        render_entry_rectangle *Entry = (render_entry_rectangle *)Data;
-       entity_basis_result Basis = GetRenderEntityBasisP(RenderGroup, &Entry->EntityBasis, ScreenDim);
-       DrawRectangle(OutputTarget, Basis.P, Basis.P + Basis.Scale*Entry->Dim, Entry->Color, ClipRect, Even);
+       DrawRectangle(OutputTarget, Entry->P, Entry->P + Entry->Dim, Entry->Color, ClipRect, Even);
 
        BaseAdress += sizeof(*Entry);
      } break;
@@ -890,6 +1012,8 @@ internal void TiledRenderGroupToOutput(platform_work_queue *RenderQueue, render_
 
   int TileWidth = OutputTarget->Width / TileCountX;
   int TileHeight = OutputTarget->Height / TileCountY;
+
+  TileWidth = ((TileWidth + 3) / 4) * 4; 
   
   for(int TileY = 0; TileY < TileCountY; ++TileY)
   {
@@ -897,11 +1021,16 @@ internal void TiledRenderGroupToOutput(platform_work_queue *RenderQueue, render_
     {
       tile_render_work *Work = WorkArray + WorkCount++;
       rectangle2i ClipRect;
-      ClipRect.MinX = TileX*TileWidth + 4;
-      ClipRect.MaxX = ClipRect.MinX + TileWidth - 4;
-      ClipRect.MinY = TileY*TileHeight + 4;
-      ClipRect.MaxY = ClipRect.MinY + TileHeight - 4;
+      ClipRect.MinX = TileX*TileWidth;
+      ClipRect.MaxX = ClipRect.MinX + TileWidth;
+      ClipRect.MinY = TileY*TileHeight;
+      ClipRect.MaxY = ClipRect.MinY + TileHeight;
 
+      if(ClipRect.MaxX > OutputTarget->Width)
+      {
+	ClipRect.MaxX = OutputTarget->Width;
+      }
+      
       Work->RenderGroup = RenderGroup;
       Work->OutputTarget = OutputTarget;
       Work->ClipRect = ClipRect;
@@ -937,98 +1066,9 @@ internal void TiledRenderGroupToOutput(render_group *RenderGroup, loaded_bitmap 
 }
 #endif
 
-#define PushRenderElement(Group, Type) (Type*)PushRenderElement_(Group, sizeof(Type), RenderGroupEntryType_##Type)
-inline void *PushRenderElement_(render_group *Group, uint32 Size, render_group_entry_type Type)
-{
-  void *Result = 0;
-  Size += sizeof(render_group_entry_header);
-  
-  if((Group->PushBufferSize + Size) < Group->MaxPushBufferSize)
-  {
-     render_group_entry_header *Header = (render_group_entry_header*)(Group->PushBufferBase + Group->PushBufferSize);
-    Header->Type = Type;
-    Result = (uint8*)Header + sizeof(*Header);
-    Group->PushBufferSize += Size;
-  }
-  else
-  {
-    InvalidCodePath;
-  }
-  
-  return Result;
-}
-
-inline void PushBitmap(render_group *Group, loaded_bitmap *Bitmap, v3 Offset, real32 Height, v4 Color = v4{1, 1, 1, 1})
-{
-  render_entry_bitmap *Entry = PushRenderElement(Group, render_entry_bitmap);
-  if(Entry)
-  {
-    v2 Size = v2{Height*Bitmap->WidthOverHeight, Height};
-    v2 Align = Hadamard(Bitmap->AlignPercentage, Size);
-    Entry->Size = Size;
-    Entry->Bitmap = Bitmap;
-    Entry->EntityBasis.Basis = Group->DefaultBasis;
-    Entry->EntityBasis.Offset = Offset - V3(Align, 0);
-    Entry->Color = Color*Group->GlobalAlpha;
-  }
-}
-
-inline void PushRect(render_group *Group, v3 Offset, v2 Dim, v4 Color)
-{
-  render_entry_rectangle *Piece = PushRenderElement(Group, render_entry_rectangle);
-  if(Piece)
-  {
-    Piece->EntityBasis.Basis = Group->DefaultBasis;
-    Piece->EntityBasis.Offset = (Offset - V3(0.5f*Dim, 0));
-    Piece->Color = Color;
-    Piece->Dim = Dim;
-  }
-}
-
-inline void PushRectOutline(render_group *Group, v3 Offset, v2 Dim, v4 Color)
-{
-  real32 Thickness = 0.1f;
-    
-  PushRect(Group, Offset - v3{0, 0.5f*Dim.y, 0}, v2{Dim.x, Thickness}, Color);
-  PushRect(Group, Offset + v3{0, 0.5f*Dim.y, 0}, v2{Dim.x, Thickness}, Color);
-
-  PushRect(Group, Offset - v3{0.5f*Dim.x, 0, 0}, v2{Thickness, Dim.y}, Color);
-  PushRect(Group, Offset + v3{0.5f*Dim.x, 0, 0}, v2{Thickness, Dim.y}, Color);  
-}
-
-inline void Clear(render_group *Group, v4 Color)
-{
-  render_entry_clear *Piece = PushRenderElement(Group, render_entry_clear);
-  if(Piece)
-  {
-    Piece->Color = Color;
-  }
-}
-
-inline render_entry_coordinate_system *CoordinateSystem(render_group *Group, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
-							loaded_bitmap *Texture, loaded_bitmap *NormalMap,
-							environment_map *Top, environment_map *Middle, environment_map *Bottom) 
-{
-  render_entry_coordinate_system *Piece = PushRenderElement(Group, render_entry_coordinate_system);
-  if(Piece)
-  {
-    Piece->Origin = Origin;
-    Piece->XAxis = XAxis;
-    Piece->YAxis = YAxis;
-    Piece->Color = Color;
-    Piece->Texture = Texture;
-    Piece->NormalMap = NormalMap;
-    Piece->Top = Top;
-    Piece->Middle = Middle;
-    Piece->Bottom = Bottom;
-  }
-
-  return Piece;
-}
-
 inline v2 UnProjected(render_group *Group, v2 ProjectedXY, real32 AtDistanceFromTheCamera)
 {
-  v2 WorldXY = (AtDistanceFromTheCamera / Group->GameCamera.FocalLength)*ProjectedXY;
+  v2 WorldXY = (AtDistanceFromTheCamera / Group->Transform.FocalLength)*ProjectedXY;
   return WorldXY;
 }
 
@@ -1042,7 +1082,7 @@ inline rectangle2 GetCameraRectangleAtDistance(render_group *Group, real32 Dista
 inline rectangle2 GetCameraRectangleAtTarget(render_group *Group)
 {
 
-  rectangle2 Result = GetCameraRectangleAtDistance(Group, Group->GameCamera.CameraDistanceAboveTarget);
+  rectangle2 Result = GetCameraRectangleAtDistance(Group, Group->Transform.CameraDistanceAboveTarget);
   return Result;
 }
 

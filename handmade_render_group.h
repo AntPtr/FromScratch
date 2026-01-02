@@ -17,23 +17,12 @@ struct environment_map
   real32 Pz;
 };
 
-struct render_basis
-{
-  v3 P;
-};
-
 enum render_group_entry_type
 {
   RenderGroupEntryType_render_entry_clear,
   RenderGroupEntryType_render_entry_bitmap,
   RenderGroupEntryType_render_entry_rectangle,
   RenderGroupEntryType_render_entry_coordinate_system,
-};
-
-struct render_entity_basis
-{
-  render_basis *Basis;
-  v3 Offset;
 };
 
 struct render_group_entry_header
@@ -49,14 +38,14 @@ struct render_entry_clear
 struct render_entry_bitmap
 {
   loaded_bitmap *Bitmap;
-  render_entity_basis EntityBasis;
+  v2 P;
   v2 Size;
   v4 Color;
 };
 
 struct render_entry_rectangle
 {
-  render_entity_basis EntityBasis;
+  v2 P;
   v4 Color;
   v2 Dim;
 };
@@ -78,22 +67,24 @@ struct render_entry_coordinate_system
   v2 Point;
 };
 
-struct render_group_camera
+struct render_transform
 {
   real32 FocalLength;
   real32 CameraDistanceAboveTarget;
+  
+  real32 MetersToPixels;
+  v2 ScreenCenter;
+  v3 OffsetP;
+  real32 Scale;
 };
 
 struct render_group
 {
   real32 GlobalAlpha;
   
-  render_group_camera GameCamera;
-  render_group_camera RenderCamera;
+  render_transform Transform;
   
-  real32 MetersToPixels; 
   v2 MonitorHalfDimInMeters;
-  render_basis *DefaultBasis;
 
   uint32 MaxPushBufferSize;
   uint32 PushBufferSize;
