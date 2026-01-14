@@ -184,17 +184,26 @@ entity_basis_result GetRenderEntityBasisP(render_transform *Transform, v3 Origin
   
   v3 P = OriginalP + Transform->OffsetP;
 
-  real32 DistanceToPz = Transform->CameraDistanceAboveTarget - P.z;
-  real32 NearClipPlane = 0.20f;
-
-  v3 RawXY = V3(P.xy, 1.0f);
-  if(DistanceToPz > NearClipPlane)
+  if(!Transform->Orthographic)
   {
-    v3 ProjectedXY = (1.0f / DistanceToPz)*Transform->FocalLength*RawXY;
-    Result.P = Transform->ScreenCenter + Transform->MetersToPixels*ProjectedXY.xy;
-    Result.Scale = Transform->MetersToPixels*ProjectedXY.z;
+    real32 DistanceToPz = Transform->CameraDistanceAboveTarget - P.z;
+    real32 NearClipPlane = 0.20f;
+
+    v3 RawXY = V3(P.xy, 1.0f);
+    if(DistanceToPz > NearClipPlane)
+    {
+      v3 ProjectedXY = (1.0f / DistanceToPz)*Transform->FocalLength*RawXY;
+      Result.P = Transform->ScreenCenter + Transform->MetersToPixels*ProjectedXY.xy + v2{0.0f, Result.Scale};
+      Result.Scale = Transform->MetersToPixels*ProjectedXY.z;
+      Result.Valid = true;
+    }
+  }
+  else
+  {
+    Result.P = Transform->ScreenCenter + Transform->MetersToPixels*P.xy;
+    Result.Scale = Transform->MetersToPixels;
     Result.Valid = true;
-  } 
+  }
   return Result;
 }
 
@@ -561,6 +570,7 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
 
   __m128 Inv255_4x = _mm_set1_ps(Inv255);
   __m128 One = _mm_set1_ps(1.0f);
+  __m128 Half = _mm_set1_ps(0.5f);
   __m128 One255_4x = _mm_set1_ps(255.0f);
   __m128 Zero = _mm_set1_ps(0.0f);
   __m128 Colorr_4x = _mm_set1_ps(Color.r);
@@ -623,8 +633,8 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
       U = _mm_min_ps(_mm_max_ps(U, Zero), One);
       V = _mm_min_ps(_mm_max_ps(V, Zero), One);
 
-      __m128 tX = _mm_mul_ps(U, WidthM2);
-      __m128 tY = _mm_mul_ps(V, HeightM2);
+      __m128 tX = _mm_add_ps(_mm_mul_ps(U, WidthM2), Half);
+      __m128 tY = _mm_add_ps(_mm_mul_ps(V, HeightM2), Half);
 
       __m128i FetchX_4x = _mm_cvttps_epi32(tX);
       __m128i FetchY_4x = _mm_cvttps_epi32(tY);
@@ -882,9 +892,13 @@ internal void DrawBitmap(loaded_bitmap *Buffer, loaded_bitmap *Bitmap, real32 re
   }
 }
 
-internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBufferSize, uint32 ResPixelX, uint32 ResPixelY)
+internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBufferSize)
 {
   render_group *Result = PushStruct(Arena, render_group);
+  if(MaxPushBufferSize == 0)
+  {
+    MaxPushBufferSize =  (uint32)GetArenaSizeRemaing(Arena);
+  }
   Result->PushBufferBase = (uint8 *)PushSize(Arena, MaxPushBufferSize);
  
   Result->MaxPushBufferSize = MaxPushBufferSize;
@@ -892,21 +906,43 @@ internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBu
   Result->GlobalAlpha = 1.0f;  
   //Result->RenderCamera.CameraDistanceAboveTarget = 30.0f;
   
-  real32 WidthOfMonitor =  0.635f;
-  real32 MetersToPixels = (real32)ResPixelX*WidthOfMonitor;
-  real32 PixelsToMeters = 1.0f / MetersToPixels;
-  Result->Transform.MetersToPixels = MetersToPixels; 
-  Result->MonitorHalfDimInMeters = v2{0.5f*ResPixelX*PixelsToMeters,
-				      0.5f*ResPixelY*PixelsToMeters};
-  
-  Result->Transform.ScreenCenter = v2{0.5f*ResPixelX,
-				      0.5f*ResPixelY};
-  
-  Result->Transform.FocalLength = 0.6f;
-  Result->Transform.CameraDistanceAboveTarget = 9.0f;
   Result->Transform.OffsetP = v3{0.0f, 0.0f, 0.0f};
   Result->Transform.Scale = 1.0f;
   return Result;
+}
+
+inline void Perspective(render_group *RenderGroup, int32 PixelWidth, int32 PixelHeight, real32 MetersToPixels, real32 FocalLength, real32 DistanceAboveTarget)
+{
+  real32 PixelsToMeters = 1.0f / MetersToPixels;
+
+  RenderGroup->MonitorHalfDimInMeters = v2{0.5f*PixelWidth*PixelsToMeters,
+					   0.5f*PixelHeight*PixelsToMeters};
+   
+  RenderGroup->Transform.MetersToPixels = MetersToPixels; 
+  RenderGroup->Transform.FocalLength = FocalLength;
+  RenderGroup->Transform.CameraDistanceAboveTarget = DistanceAboveTarget;
+   
+  RenderGroup->Transform.ScreenCenter = v2{0.5f*PixelWidth,
+					   0.5f*PixelHeight};
+
+  RenderGroup->Transform.Orthographic = false;
+}
+
+inline void Orthographic(render_group *RenderGroup, int32 PixelWidth, int32 PixelHeight, real32 MetersToPixels)
+{
+  real32 PixelsToMeters = 1.0f / MetersToPixels;
+
+  RenderGroup->MonitorHalfDimInMeters = v2{0.5f*PixelWidth*PixelsToMeters,
+					   0.5f*PixelHeight*PixelsToMeters};
+   
+  RenderGroup->Transform.MetersToPixels = MetersToPixels; 
+  RenderGroup->Transform.FocalLength = 1.0f;
+  RenderGroup->Transform.CameraDistanceAboveTarget = 1.0f;
+   
+  RenderGroup->Transform.ScreenCenter = v2{0.5f*PixelWidth,
+					   0.5f*PixelHeight};
+
+  RenderGroup->Transform.Orthographic = true;
 }
 
 internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget, rectangle2i ClipRect, bool Even)
@@ -999,6 +1035,23 @@ internal PLATFORM_WORK_QUEUE_CALLBACK(DoTiledRenderWork)
   
   RenderGroupToOutput(Work->RenderGroup, Work->OutputTarget, Work->ClipRect, true);
   RenderGroupToOutput(Work->RenderGroup, Work->OutputTarget, Work->ClipRect, false);      
+}
+
+ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget)
+{
+
+  rectangle2i ClipRect;
+  ClipRect.MinX = 0;
+  ClipRect.MaxX = OutputTarget->Width;
+  ClipRect.MinY = 0;
+  ClipRect.MaxY = OutputTarget->Height;
+
+  tile_render_work Work;
+  Work.RenderGroup = RenderGroup;
+  Work.OutputTarget = OutputTarget;
+  Work.ClipRect = ClipRect;
+
+  DoTiledRenderWork(0, &Work);
 }
 
 internal void TiledRenderGroupToOutput(platform_work_queue *RenderQueue, render_group *RenderGroup, loaded_bitmap *OutputTarget)

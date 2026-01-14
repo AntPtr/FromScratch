@@ -961,26 +961,37 @@ internal PLATFORM_WORK_QUEUE_CALLBACK(DoWorkWorker)
   OutputDebugStringA(Buffer);
 }
 
-struct win32_theard_info
-{
-  HANDLE SemaphoreHandle;
-  int LogicalTheardIndex;
-  platform_work_queue *Queue;
-};
-
 DWORD WINAPI TheardProc(LPVOID lpParameter)
 {
-  win32_theard_info *TheardInfo = (win32_theard_info *)lpParameter;
+   platform_work_queue *Queue = (platform_work_queue *)lpParameter;
 
   for(;;)
   {
-    if(Win32DoNextWorkQueueEntry(TheardInfo->Queue))
+    if(Win32DoNextWorkQueueEntry(Queue))
     {
-      WaitForSingleObjectEx(TheardInfo->Queue->SemaphoreHandle, INFINITE, false);
+      WaitForSingleObjectEx(Queue->SemaphoreHandle, INFINITE, false);
     }
   }
 }
 
+internal void Win32MakeQueue(platform_work_queue *Queue, uint32 TheardCount)
+{
+  Queue->CompletionCount = 0;
+  Queue->CompletionGoal = 0;
+  Queue->NextEntryToWrite = 0;
+  Queue->NextEntryToRead = 0;
+  
+  uint32 InitialCount = 0;
+  
+  Queue->SemaphoreHandle = CreateSemaphoreEx(0, InitialCount, TheardCount, 0, 0, SEMAPHORE_ALL_ACCESS);
+  
+  for(uint32 TheardIndex = 0; TheardIndex < TheardCount; ++TheardIndex)
+  {
+    DWORD TheardID;
+    HANDLE TheardHandle = CreateThread(0, 0, TheardProc, Queue, 0, &TheardID);
+    CloseHandle(TheardHandle);
+  } 
+}
 
 int WINAPI wWinMain(HINSTANCE Instance,
 		    HINSTANCE PrevInstance,
@@ -993,25 +1004,13 @@ int WINAPI wWinMain(HINSTANCE Instance,
   win32_state Win32State = {};
   Win32ResizeDIBSection(&GlobalBackBuffer , 960, 540);
   thread_context Thread = {};
-
-  win32_theard_info TheardInfo[3];
-  platform_work_queue Queue = {};
   
-  uint32 InitialCount = 0;
-  uint32 TheardCount = ArrayCount(TheardInfo);
-  Queue.SemaphoreHandle = CreateSemaphoreEx(0, InitialCount, TheardCount, 0, 0, SEMAPHORE_ALL_ACCESS);
-  
-  for(uint32 TheardIndex = 0; TheardIndex < TheardCount; ++TheardIndex)
-  {
-    win32_theard_info *Info = TheardInfo + TheardIndex;
-    Info->LogicalTheardIndex = TheardIndex;
-    Info->Queue = &Queue;
+  platform_work_queue HighPriorityQueue = {};
+  Win32MakeQueue(&HighPriorityQueue, 6);
+  platform_work_queue LowPriorityQueue = {};
+  Win32MakeQueue(&LowPriorityQueue, 2);
 
-    DWORD TheardID;
-    HANDLE TheardHandle = CreateThread(0, 0, TheardProc, Info, 0, &TheardID);
-    CloseHandle(TheardHandle);
-  }
-
+#if 0
   Win32AddEntry(&Queue, DoWorkWorker, "String 0");
   Win32AddEntry(&Queue, DoWorkWorker, "String 1");
   Win32AddEntry(&Queue, DoWorkWorker, "String 2");
@@ -1022,9 +1021,9 @@ int WINAPI wWinMain(HINSTANCE Instance,
   Win32AddEntry(&Queue, DoWorkWorker, "String 7");
   Win32AddEntry(&Queue, DoWorkWorker, "String 8");
   Win32AddEntry(&Queue, DoWorkWorker, "String 9");
+#endif
 
-
-  Win32CompleteAllWork(&Queue);
+  Win32CompleteAllWork(&HighPriorityQueue);
   
   WindowClass.style = CS_HREDRAW | CS_VREDRAW;
   WindowClass.lpfnWndProc = MainWindowCallback;
@@ -1123,7 +1122,9 @@ int WINAPI wWinMain(HINSTANCE Instance,
       GameMemory.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile;
       GameMemory.PermanentStorage = Win32State.GameMemoryBlock;
       GameMemory.TransientStorage = ((uint8 *) GameMemory.PermanentStorage + GameMemory.PermanentStorageSize);
-      GameMemory.RenderQueue = &Queue;
+      GameMemory.HighPriorityQueue = &HighPriorityQueue;
+      GameMemory.LowPriorityQueue = &LowPriorityQueue;
+
       GameMemory.PlatformAddEntry = Win32AddEntry;
       GameMemory.PlatformCompleteAllWork = Win32CompleteAllWork;
 

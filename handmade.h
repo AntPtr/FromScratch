@@ -312,15 +312,33 @@ typedef PLATFORM_WORK_QUEUE_CALLBACK(platform_work_queue_callback);
 typedef void platform_add_entry(platform_work_queue *Queue, platform_work_queue_callback *Callback, void *Data);
 typedef void platform_complete_all_work(platform_work_queue *Queue);
 
+struct temporary_memory
+{
+  memory_index Used;
+  memory_arena *Arena;
+};
+
+struct task_with_memory
+{
+  bool32 BeingUsed;
+  memory_arena Arena;
+
+  temporary_memory MemoryFlush;
+};
 
 struct transient_state
 {
   bool32 Initialized;
   memory_arena TranArena;
+
+  task_with_memory Tasks[4];
+  
   uint32 GroundBufferCount;
   loaded_bitmap GroundBitmapTemplate;
   ground_buffer *GroundBuffers;
-  platform_work_queue *RenderQueue;
+  
+  platform_work_queue *HighPriorityQueue;
+  platform_work_queue *LowPriorityQueue;
 
   uint32 EnvMapWidth;
   uint32 EnvMapHeight;
@@ -337,7 +355,9 @@ struct game_memory
   uint64 TransientStorageSize;
   void *TransientStorage;
 
-  platform_work_queue *RenderQueue;
+  platform_work_queue *HighPriorityQueue;
+  platform_work_queue *LowPriorityQueue;
+  
   platform_add_entry *PlatformAddEntry;
   platform_complete_all_work *PlatformCompleteAllWork;
   
@@ -357,13 +377,36 @@ internal void InitializeArena(memory_arena *Arena, memory_index Size, void* Base
   Arena->TempCount = 0;
 }
 
-#define PushStruct(Arena, type) (type *)PushSize(Arena, sizeof(type))
-#define PushArray(Arena, Count, type) (type *)PushSize(Arena, Count * sizeof(type))
-internal void *PushSize(memory_arena *Arena, memory_index Size)
+inline memory_index GetAlignmentOffset(memory_arena *Arena, memory_index Alignment)
 {
-  Assert((Arena->Used + Size) <= Arena->Size );
-  void *Result = Arena->Base + Arena->Used;
+  memory_index ResultPointer = (memory_index)Arena->Base + Arena->Used;
+  memory_index AlignmentOffset = 0;
+
+  memory_index AlignmentMask = Alignment - 1;
+  if(ResultPointer & AlignmentMask)
+  {
+    AlignmentOffset = Alignment - (ResultPointer & AlignmentMask); 
+  }
+
+  return AlignmentOffset;
+}
+
+inline memory_index GetArenaSizeRemaing(memory_arena *Arena, memory_index Alignment = 4)
+{
+  memory_index Result = Arena->Size - (Arena->Used + GetAlignmentOffset(Arena, Alignment));
+  return Result;
+}
+
+#define PushStruct(Arena, type, ...) (type *)PushSize(Arena, sizeof(type), ## __VA_ARGS__)
+#define PushArray(Arena, Count, type, ...) (type *)PushSize(Arena, Count * sizeof(type), ## __VA_ARGS__)
+internal void *PushSize(memory_arena *Arena, memory_index Size, memory_index Alignment = 4)
+{
+  memory_index AlignmentOffset = GetAlignmentOffset(Arena, Alignment);
+  Size += AlignmentOffset;
+  Assert((Arena->Used + Size) <= Arena->Size);
+  void *Result = Arena->Base + Arena->Used + AlignmentOffset;
   Arena->Used += Size;
+
   return Result;
 }
 
@@ -377,11 +420,6 @@ inline void ZeroSize(memory_index Size, void *Ptr)
   }
 }
 
-struct temporary_memory
-{
-  memory_index Used;
-  memory_arena *Arena;
-};
 
 inline temporary_memory BeginTemporaryMemory(memory_arena *Arena)
 {
@@ -407,6 +445,14 @@ inline void EndTemporaryMemory(temporary_memory TempMem)
 inline void CheckArena(memory_arena *Arena)
 {
   Assert(Arena->TempCount == 0);
+}
+
+inline void SubArena(memory_arena *Result, memory_arena *Arena, memory_index Size, memory_index Alignment = 16)
+{
+  Result->Size = Size;
+  Result->Base = (uint8 *)PushSize(Arena, Size, Alignment);
+  Result->Used = 0;
+  Result->TempCount = 0;
 }
 
 #define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread ,game_memory *Memory, game_input *Input, game_offscreen_buffer* Buffer)

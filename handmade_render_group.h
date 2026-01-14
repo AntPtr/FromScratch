@@ -69,6 +69,8 @@ struct render_entry_coordinate_system
 
 struct render_transform
 {
+  bool32 Orthographic;
+  
   real32 FocalLength;
   real32 CameraDistanceAboveTarget;
   

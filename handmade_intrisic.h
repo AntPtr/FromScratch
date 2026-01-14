@@ -1,5 +1,12 @@
 #if !defined(HANDMADE_INTRINSIC_H)
 #include "math.h"
+
+#if COMPILER_MSVC
+#define CompletePreviousWriteBeforeFutureWrites _WriteBarrier();
+#else
+#define CompletePreviousWriteBeforeFutureWrites
+#endif
+
 inline int32 RoundReal32ToInt32(real32 Real32)
 {
   int32 Result = (int32)roundf(Real32);
