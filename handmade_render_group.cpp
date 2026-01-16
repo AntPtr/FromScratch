@@ -227,6 +227,21 @@ inline void PushBitmap(render_group *Group, loaded_bitmap *Bitmap, v3 Offset, re
   }
 }
 
+inline void PushBitmap(render_group *Group, game_asset_id ID, v3 Offset, real32 Height, v4 Color = v4{1, 1, 1, 1})
+{
+  loaded_bitmap *Bitmap = GetBitmap(Group->Assets, ID);
+  if(Bitmap)
+  {
+    PushBitmap(Group, Bitmap, Offset, Height, Color);
+  }
+  else
+  {
+    LaodAssets(Group->Assets, ID);
+    ++Group->MissingBitmapCounts;
+  }
+}
+
+
 inline void PushRect(render_group *Group, v3 Offset, v2 Dim, v4 Color)
 {
   v3 P = Offset - V3(0.5f*Dim, 0);
@@ -892,7 +907,7 @@ internal void DrawBitmap(loaded_bitmap *Buffer, loaded_bitmap *Bitmap, real32 re
   }
 }
 
-internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBufferSize)
+internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Arena, uint32 MaxPushBufferSize)
 {
   render_group *Result = PushStruct(Arena, render_group);
   if(MaxPushBufferSize == 0)
@@ -904,10 +919,12 @@ internal render_group *AllocateRenderGroup(memory_arena *Arena, uint32 MaxPushBu
   Result->MaxPushBufferSize = MaxPushBufferSize;
   Result->PushBufferSize = 0;
   Result->GlobalAlpha = 1.0f;  
-  //Result->RenderCamera.CameraDistanceAboveTarget = 30.0f;
+  Result->Assets = Assets;
   
   Result->Transform.OffsetP = v3{0.0f, 0.0f, 0.0f};
   Result->Transform.Scale = 1.0f;
+
+  Result->MissingBitmapCounts = 0;
   return Result;
 }
 
@@ -1134,8 +1151,12 @@ inline rectangle2 GetCameraRectangleAtDistance(render_group *Group, real32 Dista
 
 inline rectangle2 GetCameraRectangleAtTarget(render_group *Group)
 {
-
   rectangle2 Result = GetCameraRectangleAtDistance(Group, Group->Transform.CameraDistanceAboveTarget);
   return Result;
 }
 
+inline bool32 AllResourcesArePresent(render_group *RenderGroup)
+{
+  bool32 Result = (RenderGroup->MissingBitmapCounts == 0);
+  return Result;
+}

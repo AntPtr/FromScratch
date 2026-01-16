@@ -3,6 +3,11 @@
 
 #if COMPILER_MSVC
 #define CompletePreviousWriteBeforeFutureWrites _WriteBarrier();
+inline uint32 AtomicCompareExchangeUInt32(uint32 volatile *Value, uint32 Expected, uint32 New)
+{
+  uint32 Result = _InterlockedCompareExchange((long *)Value, Expected, New);
+  return Result;
+}
 #else
 #define CompletePreviousWriteBeforeFutureWrites
 #endif

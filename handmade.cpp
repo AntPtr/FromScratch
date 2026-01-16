@@ -518,8 +518,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
   {
     fill_ground_chunk_work *Work = PushStruct(&Task->Arena, fill_ground_chunk_work);
     loaded_bitmap *Buffer = &GroundBuffer->Bitmap;
-    render_group *RenderGroup = AllocateRenderGroup(&Task->Arena, 0);
-    GroundBuffer->P = *ChunkP;
+    render_group *RenderGroup = AllocateRenderGroup(&TranState->Assets, &Task->Arena, 0);
     real32 Width = (real32)GameState->World->ChunkDimInMeters.x;
     real32 Height = (real32)GameState->World->ChunkDimInMeters.y;
 #if 1
@@ -541,7 +540,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 	for(uint32 Grass = 0; Grass < 100; ++Grass)
         {
 	  loaded_bitmap *Stamp;
-	  Stamp = GameState->Stones /*+RandomChoice(&Series, ArrayCount(GameState->Stones))*/;
+	  Stamp = TranState->Assets.Stones /*+RandomChoice(&Series, ArrayCount(GameState->Stones))*/;
 
 	  v2 Offset = Hadamard(HalfDim, v2{RandomBilateral(&Series), RandomBilateral(&Series)});
 	  v2 P = Center + Offset;
@@ -563,17 +562,21 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 	for(uint32 Grass = 0; Grass < 25; ++Grass)
 	{
 	  loaded_bitmap *Stamp;
-	  Stamp = GameState->Grass /*+ RandomChoice(&Series, ArrayCount(GameState->Grass))*/;
+	  Stamp = TranState->Assets.Grass /*+ RandomChoice(&Series, ArrayCount(GameState->Grass))*/;
 	  v2 Offset = Hadamard(HalfDim, v2{RandomBilateral(&Series), RandomBilateral(&Series)});
 	  v2 P = Center + Offset;
 	  PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f), 0.2f);
 	}
       }
     }
-    Work->Buffer = Buffer;
-    Work->RenderGroup = RenderGroup;
-    Work->Task = Task;
-    PlatformAddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
+    if(AllResourcesArePresent(RenderGroup))
+    {
+      GroundBuffer->P = *ChunkP;
+      Work->Buffer = Buffer;
+      Work->RenderGroup = RenderGroup;
+      Work->Task = Task;
+      PlatformAddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
+    }
   }
 #endif
 }
@@ -687,6 +690,128 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   return Result;
 }
 
+internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, thread_context *Theard, debug_platform_read_entire_file *ReadEntireFile, char *FileName, int32 AlignX, int32 TopDownAlignY)
+{
+  loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
+  *Bitmap = DEBUGLoadBMP(Theard, ReadEntireFile, FileName, AlignX, TopDownAlignY);
+  return Bitmap;
+}
+
+internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, thread_context *Theard, debug_platform_read_entire_file *ReadEntireFile, char *FileName)
+{
+  loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
+  *Bitmap = DEBUGLoadBMP(Theard, ReadEntireFile, FileName);
+  return Bitmap;
+}
+
+struct load_asset_work
+{
+  loaded_bitmap *Bitmap;
+  game_assets *Assets;
+  char *FileName;
+  game_asset_id ID;
+  task_with_memory *Task;
+  bool32 HasAlignment;
+  int32 AlignX;
+  int32 TopDownAlignY;
+};
+
+internal PLATFORM_WORK_QUEUE_CALLBACK(LoadAssetWork)
+{
+  load_asset_work *Work = (load_asset_work*)Data;
+
+  thread_context *Thread = 0;
+  if(Work->HasAlignment)
+  {
+    *Work->Bitmap = DEBUGLoadBMP(Thread, Work->Assets->ReadEntireFile, Work->FileName);
+  }
+  else
+  {
+    *Work->Bitmap = DEBUGLoadBMP(Thread, Work->Assets->ReadEntireFile, Work->FileName, Work->AlignX, Work->TopDownAlignY);
+  }
+
+  CompletePreviousWriteBeforeFutureWrites;
+  
+  Work->Assets->Bitmaps[Work->ID].Bitmap = Work->Bitmap;
+  Work->Assets->Bitmaps[Work->ID].State = AssetState_Loaded;
+
+  
+  EndTaskWithMemory(Work->Task);
+}
+
+internal void LaodAssets(game_assets *Assets, game_asset_id ID) 
+{
+  if(AtomicCompareExchangeUInt32((uint32 *)&Assets->Bitmaps[ID].State, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded)
+  {
+    task_with_memory *Task = BeginTaskWithMemory(Assets->TranState);
+    if(Task)
+    {
+      debug_platform_read_entire_file *ReadEntireFile = Assets->ReadEntireFile;
+      load_asset_work *Work = PushStruct(&Task->Arena, load_asset_work);
+
+      Work->Assets = Assets;
+      Work->ID = ID;
+      Work->FileName = "";
+      Work->Task = Task;
+      Work->HasAlignment = false;
+      Work->Bitmap = PushStruct(&Assets->Arena, loaded_bitmap);
+    
+      PlatformAddEntry(Assets->TranState->LowPriorityQueue, LoadAssetWork, Work);
+
+      switch(ID)
+      {
+        case GAI_Monster:
+	{
+	  Work->FileName = "test/monster.bmp";
+	  Work->HasAlignment = true;
+	  Work->AlignX = 40;
+	  Work->TopDownAlignY = 80;
+	} break;
+    
+        case GAI_Sword:
+	{
+	  Work->FileName =  "test/fireball.bmp";
+	  Work->HasAlignment = true;
+	  Work->AlignX = 40;
+	  Work->TopDownAlignY = 80;
+	} break;
+    
+        case GAI_Staff:
+	{
+	  Work->FileName = "test/staff.bmp";
+	  Work->HasAlignment = true;
+	  Work->AlignX = 40;
+	  Work->TopDownAlignY = 80;
+	} break;
+    
+        case GAI_Stair:
+	{
+	 Work->FileName = "test/staff.bmp";
+	 Work->HasAlignment = true;
+	 Work->AlignX = 40;
+	 Work->TopDownAlignY = 80;
+	} break;
+    
+        case GAI_BackGround:
+	{
+	  Work->FileName = "test/test_img.bmp";
+	  Work->HasAlignment = true;
+	  Work->AlignX = 40;
+	  Work->TopDownAlignY = 80;
+	} break;
+
+        case GAI_Wall:
+	{
+	  Work->FileName = "test/brick.bmp";
+	  Work->HasAlignment = true;
+	  Work->AlignX = 40;
+	  Work->TopDownAlignY = 80;
+	} break;
+      }
+    }
+  }
+}
+
 #if defined __cplusplus
 extern "C"
 #endif
@@ -729,17 +854,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                 PixelsToMeters*(real32)GroundBufferHeight,
                                 GameState->TypicalFloorHeight};
     InitializeWorld(World, WorldChunkDimInMeters);
-
-    GameState->BackGround = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/test_img.bmp");
-    GameState->Wall = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/brick.bmp", 40 ,80);
-    GameState->Wizard.Wiz[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage1.bmp", 50, 145);
-    GameState->Wizard.Wiz[1] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage2.bmp", 50, 145);
-    GameState->Monster = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/monster.bmp", 40, 80);
-    GameState->Sword = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/fireball.bmp", 25 ,25);
-    GameState->Staff = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/staff.bmp");
-    GameState->Stair = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/staff.bmp");
-    GameState->Grass[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/Grass.bmp");
-    GameState->Stones[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/Dirt.bmp");
     
     
     GameState->NullCollision = MakeNullCollision(GameState);
@@ -938,6 +1052,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     InitializeArena(&TranState->TranArena, Memory->TransientStorageSize - sizeof(transient_state), (uint8 *)Memory->TransientStorage + sizeof(transient_state));
 
+    SubArena(&TranState->Assets.Arena, &TranState->TranArena, Megabytes(64));
+    TranState->Assets.TranState = TranState;
+    TranState->Assets.ReadEntireFile = Memory->DEBUGPlatformReadEntireFile;
+    
     TranState->GroundBufferCount = 256;
     TranState->GroundBuffers = PushArray(&TranState->TranArena, TranState->GroundBufferCount, ground_buffer);
     
@@ -959,6 +1077,14 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       GroundBuffer->Bitmap = MakeEmptyBitmap(&TranState->TranArena, GroundBufferWidth, GroundBufferHeight, false);
       GroundBuffer->P = NullPosition();
     }
+
+    TranState->Assets.Wizard.Wiz[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage1.bmp", 50, 145);
+    TranState->Assets.Wizard.Wiz[1] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/mage2.bmp", 50, 145);
+    TranState->Assets.Grass[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/Grass.bmp");
+    TranState->Assets.Stones[0] = DEBUGLoadBMP(Thread, Memory->DEBUGPlatformReadEntireFile, "test/Dirt.bmp");
+    //LaodAssets(TranState, &TranState->Assets, Thread, Memory->DEBUGPlatformReadEntireFile);
+      
+    
     GameState->TestDiffuse = MakeEmptyBitmap(&TranState->TranArena, 256, 256, 0);
     /*DrawRectangle(&GameState->TestDiffuse, v2{0, 0}, V2i(GameState->TestDiffuse.Width, GameState->TestDiffuse.Height), v4{0.4f, 0.4f, 0.4f, 1.0f});*/
     
@@ -1083,7 +1209,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   DrawBuffer->Pitch = Buffer->Pitch;
   DrawBuffer->Memory = Buffer->Memory;
 
-  render_group *RenderGroup = AllocateRenderGroup(&TranState->TranArena, Megabytes(4));
+  render_group *RenderGroup = AllocateRenderGroup(&TranState->Assets, &TranState->TranArena, Megabytes(4));
   
   real32 WidthOfMonitor =  0.635f;
   real32 MetersToPixels = (real32)DrawBuffer->Width*WidthOfMonitor;
@@ -1346,36 +1472,36 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       {
         case EntityType_Hero:
         {
-	  loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
+	  loaded_bitmap *Wizard = &TranState->Assets.Wizard.Wiz[Entity->WizFacingDirection];
 	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
 	  DrawHitpoints(Entity, RenderGroup);
         } break;
 	
         case EntityType_Wall:
         {
-          PushBitmap(RenderGroup, &GameState->Wall, v3{0, 0, 0}, 2.5f);
+          PushBitmap(RenderGroup, GAI_Wall, v3{0, 0, 0}, 2.5f);
         } break;
 	
         case EntityType_Monster:
         {
-	  PushBitmap(RenderGroup, &GameState->Monster, v3{0, 0, 0}, 1.8f);
+	  PushBitmap(RenderGroup, GAI_Monster, v3{0, 0, 0}, 1.8f);
 	  DrawHitpoints(Entity, RenderGroup);
         } break;
 	
         case EntityType_Familiar:
         {  
-          loaded_bitmap *Wizard = &GameState->Wizard.Wiz[Entity->WizFacingDirection];
+          loaded_bitmap *Wizard = &TranState->Assets.Wizard.Wiz[Entity->WizFacingDirection];
 	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
         } break;
 	
         case EntityType_Staff:
         {
-	  PushBitmap(RenderGroup, &GameState->Staff, v3{0.5f, 0, 0}, 0.8f);
+	  PushBitmap(RenderGroup, GAI_Staff, v3{0.5f, 0, 0}, 0.8f);
         } break;
 
         case EntityType_Sword:
         {
-	  PushBitmap(RenderGroup, &GameState->Sword, v3{0, 0, 0}, 0.5f);
+	  PushBitmap(RenderGroup, GAI_Sword, v3{0, 0, 0}, 0.5f);
         } break;
 	
         case EntityType_Stair:

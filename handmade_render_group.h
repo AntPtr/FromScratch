@@ -82,6 +82,8 @@ struct render_transform
 
 struct render_group
 {
+  struct game_assets *Assets;
+  
   real32 GlobalAlpha;
   
   render_transform Transform;
@@ -91,6 +93,8 @@ struct render_group
   uint32 MaxPushBufferSize;
   uint32 PushBufferSize;
   uint8 *PushBufferBase;
+
+  uint32 MissingBitmapCounts;
 };
 
 #define HANDMADE_RENDER_GROUP_H

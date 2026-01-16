@@ -261,6 +261,49 @@ struct ground_buffer
   loaded_bitmap Bitmap;
 };
 
+enum game_asset_id
+{
+  GAI_BackGround,
+  GAI_Wall,
+  GAI_Monster,
+  GAI_Sword,
+  GAI_Staff,
+  GAI_Stair,
+
+  GAI_Count,
+};
+
+enum asset_state
+{
+  AssetState_Unloaded,
+  AssetState_Queued,
+  AssetState_Loaded,
+};
+
+struct asset_slot
+{
+  asset_state State;
+  loaded_bitmap *Bitmap;
+};
+
+struct game_assets
+{
+  memory_arena Arena;
+  struct transient_state *TranState;
+  debug_platform_read_entire_file *ReadEntireFile;
+  asset_slot Bitmaps[GAI_Count];
+  loaded_bitmap Grass[2];
+  loaded_bitmap Stones[2];
+  wizard Wizard;
+};
+
+inline loaded_bitmap *GetBitmap(game_assets *Assets, game_asset_id ID)
+{
+  loaded_bitmap *Result = Assets->Bitmaps[ID].Bitmap;
+
+  return Result;
+}
+
 struct game_state
 {
   memory_arena WorldArena;
@@ -277,16 +320,6 @@ struct game_state
   
   uint32 CameraFollowEntityIndex;
   
-  loaded_bitmap BackGround;
-  loaded_bitmap Wall;
-  loaded_bitmap Monster;
-  loaded_bitmap Sword;
-  loaded_bitmap Staff;
-  loaded_bitmap Stair;
-  loaded_bitmap Grass[2];
-  loaded_bitmap Stones[2];
-  wizard Wizard;
-
   pairwise_collision_rule *CollisionRuleHash[256];
   pairwise_collision_rule *FirstFreeCollisionRule;
 
@@ -343,6 +376,8 @@ struct transient_state
   uint32 EnvMapWidth;
   uint32 EnvMapHeight;
   environment_map EnvMaps[3];
+
+  game_assets Assets;
 };
 
 struct game_memory
@@ -478,5 +513,6 @@ internal void ClearCollisionRulesFor(game_state *GameState, uint32 StorageIndex)
 
 global_variable platform_add_entry *PlatformAddEntry;
 global_variable platform_complete_all_work *PlatformCompleteAllWork;
+internal void LaodAssets(game_assets *Assets, game_asset_id ID); 
 #define HANDMADE_H
 #endif
