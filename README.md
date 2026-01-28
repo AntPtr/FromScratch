@@ -4,7 +4,7 @@ The building is done with a simple bat file.
 I'm going to list some of them time by time: 
 <br>
 <br>
--Dynamic ground floors generation:
+-Dynamic ground floors generation in the background theard async:
 <br>
 ![Demo](https://i.imgur.com/KoFlv5J.gif)
 <br>
