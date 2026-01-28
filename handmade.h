@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <float.h>
 
+
 #define local_persist static
 #define global_variable static
 #define internal static
@@ -70,11 +71,6 @@ typedef double real64;
 #define InvalidDefaultCase default: {InvalidCodePath;} break
 #define Align16(value) ((value + 15) & ~15)
 
-struct thread_context
-{
-  int placeholder;
-};
-
 #if H_INTERNAL
 struct debug_read_file_result
 {
@@ -97,13 +93,13 @@ typedef struct debug_cycle_counter
   uint32 HitCount;
 } debug_cycle_counter;
 
-#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name (thread_context *Thread ,void *Memory)
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name (void *Memory)
 typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
 
-#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name (thread_context *Thread ,char *Filename)
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name (char *Filename)
 typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
 
-#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) bool32 name (thread_context *Thread ,char *Filename, uint32 MemorySize, void *Memory)
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) bool32 name (char *Filename, uint32 MemorySize, void *Memory)
 typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
 
 extern struct game_memory *DebugGlobalMemory = 0;
@@ -225,11 +221,6 @@ struct memory_arena
   int32 Pitch;
 };*/
 
-struct wizard
-{
-  loaded_bitmap Wiz[2];
-};
-
 #define HIT_POINT_SUB_COUNT 4
 
 struct low_entity
@@ -261,51 +252,10 @@ struct ground_buffer
   loaded_bitmap Bitmap;
 };
 
-enum game_asset_id
-{
-  GAI_BackGround,
-  GAI_Wall,
-  GAI_Monster,
-  GAI_Sword,
-  GAI_Staff,
-  GAI_Stair,
-
-  GAI_Count,
-};
-
-enum asset_state
-{
-  AssetState_Unloaded,
-  AssetState_Queued,
-  AssetState_Loaded,
-};
-
-struct asset_slot
-{
-  asset_state State;
-  loaded_bitmap *Bitmap;
-};
-
-struct game_assets
-{
-  memory_arena Arena;
-  struct transient_state *TranState;
-  debug_platform_read_entire_file *ReadEntireFile;
-  asset_slot Bitmaps[GAI_Count];
-  loaded_bitmap Grass[2];
-  loaded_bitmap Stones[2];
-  wizard Wizard;
-};
-
-inline loaded_bitmap *GetBitmap(game_assets *Assets, game_asset_id ID)
-{
-  loaded_bitmap *Result = Assets->Bitmaps[ID].Bitmap;
-
-  return Result;
-}
-
 struct game_state
 {
+  bool32 IsInitialized;
+  
   memory_arena WorldArena;
   world* World;
   world_position CameraP;
@@ -377,13 +327,11 @@ struct transient_state
   uint32 EnvMapHeight;
   environment_map EnvMaps[3];
 
-  game_assets Assets;
+  game_assets *Assets;
 };
 
 struct game_memory
 {
-  bool32 IsInitialized;
-
   uint64 PermanentStorageSize;
   void *PermanentStorage;
 
@@ -490,11 +438,11 @@ inline void SubArena(memory_arena *Result, memory_arena *Arena, memory_index Siz
   Result->TempCount = 0;
 }
 
-#define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread ,game_memory *Memory, game_input *Input, game_offscreen_buffer* Buffer)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory *Memory, game_input *Input, game_offscreen_buffer* Buffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 
-#define GAME_GET_SOUND_SAMPLES(name) void name(thread_context *Thread ,game_memory *Memory, game_sound_output_buffer *SoundBuffer)
+#define GAME_GET_SOUND_SAMPLES(name) void name(game_memory *Memory, game_sound_output_buffer *SoundBuffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 
 inline low_entity *GetLowEntity(game_state *GameState, uint32 LowIndex)
@@ -513,6 +461,8 @@ internal void ClearCollisionRulesFor(game_state *GameState, uint32 StorageIndex)
 
 global_variable platform_add_entry *PlatformAddEntry;
 global_variable platform_complete_all_work *PlatformCompleteAllWork;
-internal void LaodAssets(game_assets *Assets, game_asset_id ID); 
+global_variable debug_platform_read_entire_file *DEBUGReadEntireFile;
+
+#include "handmade_asset.h"
 #define HANDMADE_H
 #endif

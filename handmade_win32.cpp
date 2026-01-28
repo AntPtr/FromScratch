@@ -315,7 +315,7 @@ DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
 	}
 	else
 	{
-	   DEBUGPlatformFreeFileMemory(Thread ,Result.Contents);
+	   DEBUGPlatformFreeFileMemory(Result.Contents);
 	   Result.Contents = 0;
 	}
       }
@@ -345,7 +345,7 @@ DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)
     }
     else
     {
-       DEBUGPlatformFreeFileMemory(Thread ,Memory);
+       DEBUGPlatformFreeFileMemory(Memory);
        Result = 0;
     }
    
@@ -1003,7 +1003,6 @@ int WINAPI wWinMain(HINSTANCE Instance,
   WNDCLASSA WindowClass = {};
   win32_state Win32State = {};
   Win32ResizeDIBSection(&GlobalBackBuffer , 960, 540);
-  thread_context Thread = {};
   
   platform_work_queue HighPriorityQueue = {};
   Win32MakeQueue(&HighPriorityQueue, 6);
@@ -1293,7 +1292,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 
 	    if(Game.UpdateAndRender)
 	    {
-	      Game.UpdateAndRender(&Thread ,&GameMemory, NewInput , &Buffer);
+	      Game.UpdateAndRender(&GameMemory, NewInput , &Buffer);
 	      HandleDebugCycleCounters(&GameMemory);
 	    }
 	    LARGE_INTEGER AudioWallClock = Win32GetClock();
@@ -1353,7 +1352,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	      SoundBuffer.Samples = Samples;
 	      if(Game.GetSoundSamples)
 	      {
-		Game.GetSoundSamples(&Thread ,&GameMemory, &SoundBuffer);
+		Game.GetSoundSamples(&GameMemory, &SoundBuffer);
 	      }
 	      Win32FillSoundBuffer(&SoundOutput, ByteToLock, BytesToWrite, &SoundBuffer);
 #if H_INTERNAL
