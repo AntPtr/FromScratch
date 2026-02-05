@@ -8,6 +8,7 @@
 #define global_variable static
 #define internal static
 #define Pi32 3.14159265359f
+#define Tau32 6.28318530718f
 #define Minimum(A, B) ((A < B) ? A : B)
 #define Maximum(A, B) ((A > B) ? A : B)
 

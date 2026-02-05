@@ -643,26 +643,8 @@ internal void MoveEntity(game_state *GameState, sim_region *SimRegion, sim_entit
   {
     //Leave the last facing direction
   }
-  else if(AbsoluteValue(Entity->dvP.x) > AbsoluteValue(Entity->dvP.y))
+  else 
   {
-    if(Entity->dvP.x > 0)
-    {
-      Entity->WizFacingDirection = 0;
-    }
-    else
-    {
-      Entity->WizFacingDirection = 1;
-    }
-  }
-  if(AbsoluteValue(Entity->dvP.x) < AbsoluteValue(Entity->dvP.y))
-  {
-    if(Entity->dvP.y > 0)
-    {
-
-    }
-    else
-    {
-
-    }
+    Entity->WizFacingDirection = ATan2(Entity->dvP.y, Entity->dvP.x);
   }
 }

@@ -41,7 +41,6 @@ struct v3
   v3 &operator+=(v3 A);
 };
 
-
 struct v4
 {
   union
@@ -247,6 +246,13 @@ inline int32 SignOf(int32 Value)
 {
   int32 Result;
   Result = (Value >= 0) ? 1 : -1;
+  return Result;
+}
+
+inline real32 SignOf(real32 Value)
+{
+  real32 Result;
+  Result = (Value >= 0.0f) ? 1.0f : -1.0f;
   return Result;
 }
 
@@ -748,6 +754,12 @@ inline rectangle2i InvertedInfinityRectangle(void)
   rectangle2i Result;
   Result.MinX = Result.MinY = INT_MAX;
   Result.MaxX = Result.MaxX = -INT_MAX;
+  return Result;
+}
+
+inline real32 ATan2(real32 Y, real32 X)
+{
+  real32 Result = atan2f(Y, X);
   return Result;
 }
 #define HANDMADE_MATH_H

@@ -69,7 +69,7 @@ struct sim_entity
   //real32 Z;
   //real32 dvZ;
   entity_type Type;
-  uint32 WizFacingDirection;
+  real32 WizFacingDirection;
   
   v3 dvP;
 

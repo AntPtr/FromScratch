@@ -439,6 +439,10 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
     Buffer->WidthOverHeight = 1.0f;
     Orthographic(RenderGroup, Buffer->Width, Buffer->Height, (Buffer->Width - 2) / Width);
 
+    Work->Buffer = Buffer;
+    Work->RenderGroup = RenderGroup;
+    Work->Task = Task;
+
     for(int32 ChunkOffsetY = -1; ChunkOffsetY <= 1; ++ChunkOffsetY)
     {
       for(int32 ChunkOffsetX = -1; ChunkOffsetX <= 1; ++ChunkOffsetX)
@@ -451,9 +455,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 	v2 Center = v2{ChunkOffsetX*Width, ChunkOffsetY*Height};
 	for(uint32 Grass = 0; Grass < 100; ++Grass)
         {
-	  loaded_bitmap *Stamp;
-	  Stamp = TranState->Assets->Stones /*+RandomChoice(&Series, ArrayCount(GameState->Stones))*/;
-
+	  bitmap_id Stamp = RandomAssetFrom(TranState->Assets, Asset_Dirt, &Series);
 	  v2 Offset = Hadamard(HalfDim, v2{RandomBilateral(&Series), RandomBilateral(&Series)});
 	  v2 P = Center + Offset;
 	  PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f), 1.5f);
@@ -473,8 +475,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 	v2 Center = v2{ChunkOffsetX*Width, ChunkOffsetY*Height};
 	for(uint32 Grass = 0; Grass < 25; ++Grass)
 	{
-	  loaded_bitmap *Stamp;
-	  Stamp = TranState->Assets->Grass /*+ RandomChoice(&Series, ArrayCount(GameState->Grass))*/;
+	  bitmap_id Stamp =  RandomAssetFrom(TranState->Assets, Asset_Grass, &Series);
 	  v2 Offset = Hadamard(HalfDim, v2{RandomBilateral(&Series), RandomBilateral(&Series)});
 	  v2 P = Center + Offset;
 	  PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f), 0.2f);
@@ -484,10 +485,11 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
     if(AllResourcesArePresent(RenderGroup))
     {
       GroundBuffer->P = *ChunkP;
-      Work->Buffer = Buffer;
-      Work->RenderGroup = RenderGroup;
-      Work->Task = Task;
       PlatformAddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
+    }
+    else
+    {
+      EndTaskWithMemory(Work->Task);
     }
   }
 #endif
@@ -602,13 +604,14 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   return Result;
 }
 
+/*
 internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName, int32 AlignX, int32 TopDownAlignY)
 {
   loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
   *Bitmap = DEBUGLoadBMP(FileName, AlignX, TopDownAlignY);
   return Bitmap;
 }
-
+*/
 internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName)
 {
   loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
@@ -1273,9 +1276,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       {
         case EntityType_Hero:
         {
-	  loaded_bitmap *Wizard = &TranState->Assets->Wizard.Wiz[Entity->WizFacingDirection];
-	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
-	  DrawHitpoints(Entity, RenderGroup);
+	        asset_vector MatchVector = {};
+	        MatchVector.E[Tag_Facing_Direction] = Entity->WizFacingDirection;
+	        asset_vector WeightVector = {};
+	        WeightVector.E[Tag_Facing_Direction] = 1.0f;
+	        bitmap_id Wizard = BestMatchAsset(TranState->Assets, Asset_Wizard, &MatchVector, &WeightVector);
+	        PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
+	        DrawHitpoints(Entity, RenderGroup);
         } break;
 	
         case EntityType_Wall:
@@ -1291,8 +1298,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	
         case EntityType_Familiar:
         {  
-          loaded_bitmap *Wizard = &TranState->Assets->Wizard.Wiz[Entity->WizFacingDirection];
-	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
+          //loaded_bitmap *Wizard = &TranState->Assets->Wizard.Wiz[Entity->WizFacingDirection];
+	  PushBitmap(RenderGroup, GetFirstBitmap(TranState->Assets, Asset_Wizard), v3{0, 0, 0}, 1.8f);
         } break;
 	
         case EntityType_Staff:

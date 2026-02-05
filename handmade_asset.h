@@ -1,8 +1,4 @@
 #if !defined(HANDMADE_ASSET_H)
-struct wizard
-{
-  loaded_bitmap Wiz[2];
-};
 
 enum asset_type_id
 {
@@ -14,6 +10,9 @@ enum asset_type_id
   Asset_Sword,
   Asset_Staff,
   Asset_Stair,
+  Asset_Grass,
+  Asset_Dirt,
+  Asset_Wizard,
 
   Asset_Count,
 };
@@ -30,6 +29,7 @@ enum asset_tag_id
 {
   Tag_Smoothness,
   Tag_Flatness,
+  Tag_Facing_Direction, //Angle in radians
 
   Tag_Count,
 };
@@ -40,6 +40,11 @@ struct asset_slot
   loaded_bitmap *Bitmap;
 };
 
+struct asset_vector
+{
+  real32 E[Tag_Count];
+};
+
 struct asset_tag
 {
   uint32 ID;
@@ -48,14 +53,8 @@ struct asset_tag
 
 struct asset_bitmap_info
 {
-  
   v2 AlignPercentage;
-  real32 WidthOverHeight;
-  int32 Width;
-  int32 Height;
-
-  uint32 FirstTagIndex;
-  uint32 OnePastLastTagIndex;
+  char *FileName;
 };
 
 struct asset_group
@@ -84,6 +83,8 @@ struct game_assets
   
   asset_type AssetTypes[Asset_Count];
 
+  real32 TagRange[Tag_Count];
+  
   uint32 AssetCounts;
   asset *Assets;
 
@@ -92,23 +93,33 @@ struct game_assets
   
   uint32 BitmapCounts;
   asset_slot *Bitmaps;
-
+  asset_bitmap_info *BitmapInfos;
+  
   uint32 SoundCounts;
   asset_slot *Sounds;
   
-  loaded_bitmap Grass[2];
-  loaded_bitmap Stones[2];
-  wizard Wizard;
+  //wizard Wizard;
+
+  uint32 DEBUGBitmapCount;
+  uint32 DEBUGAssetCount;
+  uint32 DEBUGTagCount;
+  asset_type *DEBUGAssetType;
+  asset *DEBUGAsset;
 };
 
 struct bitmap_id
 {
-  int32 Value;
+  uint32 Value;
+};
+
+struct wizard
+{
+  bitmap_id Wiz;
 };
 
 struct audio_id
 {
-  int32 Value;
+  uint32 Value;
 };
 
 inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)

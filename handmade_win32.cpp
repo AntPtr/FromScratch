@@ -1002,7 +1002,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
   Win32LoadXInput();
   WNDCLASSA WindowClass = {};
   win32_state Win32State = {};
-  Win32ResizeDIBSection(&GlobalBackBuffer , 960, 540);
+  Win32ResizeDIBSection(&GlobalBackBuffer , 1280, 720);
   
   platform_work_queue HighPriorityQueue = {};
   Win32MakeQueue(&HighPriorityQueue, 6);
