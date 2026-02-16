@@ -11,6 +11,13 @@ struct loaded_bitmap
   int32 Pitch;
 };
 
+struct loaded_sound
+{
+    uint32 SampleCount;
+    uint32 ChannelCount;
+    int16 *Samples[2];
+};
+
 struct environment_map
 {
   loaded_bitmap LOD[4];

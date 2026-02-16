@@ -61,6 +61,32 @@ typedef double real64;
 #include "handmade_entity.h"
 #include "handmade_render_group.h"
 
+struct memory_arena
+{
+  memory_index Size;
+  uint8 *Base;
+  memory_index Used;
+
+  int32 TempCount;
+};
+
+struct temporary_memory
+{
+  memory_index Used;
+  memory_arena *Arena;
+};
+
+struct task_with_memory
+{
+  bool32 BeingUsed;
+  memory_arena Arena;
+
+  temporary_memory MemoryFlush;
+};
+
+#include "handmade_asset.h"
+
+
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
 
 #if HANDMADE_SLOW
@@ -204,15 +230,6 @@ inline game_controller_input *GetController(game_input *Input, int ControllerInd
   return Result;
 }
 
-struct memory_arena
-{
-  memory_index Size;
-  uint8 *Base;
-  memory_index Used;
-
-  int32 TempCount;
-};
-
 #define BITMAP_BYTES_PER_PIXEL 4
 /*struct loaded_bitmap
 {
@@ -253,6 +270,15 @@ struct ground_buffer
   loaded_bitmap Bitmap;
 };
 
+struct playing_sound
+{
+  real32 Volumes[2];
+  uint32 SamplesPlayed;
+  sound_id ID;
+  playing_sound *Next;
+  bool32 Loop;
+};
+
 struct game_state
 {
   bool32 IsInitialized;
@@ -286,6 +312,13 @@ struct game_state
   loaded_bitmap TestDiffuse;
   loaded_bitmap TestNormal;
   
+  loaded_sound TestSound;
+  uint32 TestSampleIndex;
+  bool32 PlayAudio;
+
+  playing_sound *FirstPlayingSound;
+  playing_sound *FirstFreePlayingSound;
+  
   real32 Time;
 };
 
@@ -296,19 +329,6 @@ typedef PLATFORM_WORK_QUEUE_CALLBACK(platform_work_queue_callback);
 typedef void platform_add_entry(platform_work_queue *Queue, platform_work_queue_callback *Callback, void *Data);
 typedef void platform_complete_all_work(platform_work_queue *Queue);
 
-struct temporary_memory
-{
-  memory_index Used;
-  memory_arena *Arena;
-};
-
-struct task_with_memory
-{
-  bool32 BeingUsed;
-  memory_arena Arena;
-
-  temporary_memory MemoryFlush;
-};
 
 struct transient_state
 {
@@ -464,6 +484,5 @@ global_variable platform_add_entry *PlatformAddEntry;
 global_variable platform_complete_all_work *PlatformCompleteAllWork;
 global_variable debug_platform_read_entire_file *DEBUGReadEntireFile;
 
-#include "handmade_asset.h"
 #define HANDMADE_H
 #endif

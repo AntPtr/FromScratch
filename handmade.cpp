@@ -397,31 +397,6 @@ internal PLATFORM_WORK_QUEUE_CALLBACK(FillGroundChunkWork)
   EndTaskWithMemory(Work->Task);
 }
 
-#if 0
-internal int32 PickBest(asset_bitmap_info *Infos, uint32 InfoCount, asset_tag *Tags, real32 *MatchVector, real32 *WeightedVector)
-{
-  real32 BestDiff = Real32Maximum;
-  int32 BestIndex = 0;
-
-  for(uint32 InfoIndex = 0; InfoIndex < InfoCount; ++InfoIndex)
-  {
-    asset_bitmap_info *Info = Infos + InfoIndex;
-    real32 TotalWeigthDifference = 0.0f;
-    for(uint32 TagIndex = Info->FirstTagIndex; TagIndex < Info->OnePastLastTagIndex; ++TagIndex)
-    {
-      asset_tag *Tag = Tags + TagIndex;
-      real32 Difference = MatchVector[Tag->ID] - Tag->Value;
-      real32 Weighted = WeightedVector[Tag->ID]*AbsoluteValue(Difference);
-      TotalWeigthDifference += Weighted;
-    }
-    if(BestDiff > TotalWeigthDifference)
-    {
-      BestDiff = TotalWeigthDifference;
-      BestIndex = InfoIndex;
-    }
-  }
-}
-#endif 
 
 internal void FillGroundChunk(transient_state *TranState, game_state *GameState, ground_buffer *GroundBuffer, world_position *ChunkP)
 {
@@ -455,7 +430,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 	v2 Center = v2{ChunkOffsetX*Width, ChunkOffsetY*Height};
 	for(uint32 Grass = 0; Grass < 100; ++Grass)
         {
-	  bitmap_id Stamp = RandomAssetFrom(TranState->Assets, Asset_Dirt, &Series);
+	  bitmap_id Stamp = RandomBitmapFrom(TranState->Assets, Asset_Dirt, &Series);
 	  v2 Offset = Hadamard(HalfDim, v2{RandomBilateral(&Series), RandomBilateral(&Series)});
 	  v2 P = Center + Offset;
 	  PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f), 1.5f);
@@ -475,7 +450,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 	v2 Center = v2{ChunkOffsetX*Width, ChunkOffsetY*Height};
 	for(uint32 Grass = 0; Grass < 25; ++Grass)
 	{
-	  bitmap_id Stamp =  RandomAssetFrom(TranState->Assets, Asset_Grass, &Series);
+	  bitmap_id Stamp =  RandomBitmapFrom(TranState->Assets, Asset_Grass, &Series);
 	  v2 Offset = Hadamard(HalfDim, v2{RandomBilateral(&Series), RandomBilateral(&Series)});
 	  v2 P = Center + Offset;
 	  PushBitmap(RenderGroup, Stamp, ToV3(P, 0.0f), 0.2f);
@@ -604,6 +579,28 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   return Result;
 }
 
+internal playing_sound *PlaySound(game_state *GameState, sound_id SoundID, bool32 Loop)
+{
+  if(!GameState->FirstFreePlayingSound)
+  {
+    GameState->FirstFreePlayingSound = PushStruct(&GameState->WorldArena, playing_sound);
+    GameState->FirstFreePlayingSound->Next = 0;
+  }
+  playing_sound *PlayingSound = GameState->FirstFreePlayingSound;
+  GameState->FirstFreePlayingSound = PlayingSound->Next;
+
+  PlayingSound->SamplesPlayed = 0;
+  PlayingSound->Volumes[0] = 1.0f;
+  PlayingSound->Volumes[1] = 1.0f;
+  PlayingSound->ID = SoundID;
+  PlayingSound->Loop = Loop;
+  
+  PlayingSound->Next = GameState->FirstPlayingSound;
+  GameState->FirstPlayingSound = PlayingSound;
+
+  return PlayingSound;
+}
+
 /*
 internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName, int32 AlignX, int32 TopDownAlignY)
 {
@@ -646,12 +643,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     InitializeArena(&GameState->WorldArena, Memory->PermanentStorageSize - sizeof(game_state), (uint8 *)Memory->PermanentStorage + sizeof(game_state));
     DEBUGReadEntireFile = Memory->DEBUGPlatformReadEntireFile;
     uint32 TilesPerWidth = 17;
-    uint32 TilesPerHeight = 9;
-
+    uint32 TilesPerHeight = 9;    
     uint32 GroundBufferWidth = 256;
     uint32 GroundBufferHeight = 256;
 
     GameState->World = PushStruct(&GameState->WorldArena, world);
+    GameState->TestSound = DEBUGLoadWAV("test/fire.wav");
+    GameState->PlayAudio = false;
 
     world *World = GameState->World;
     AddLowEntity(GameState, EntityType_Null, NullPosition());
@@ -876,7 +874,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     TranState->HighPriorityQueue = Memory->HighPriorityQueue;
     TranState->LowPriorityQueue = Memory->LowPriorityQueue;
 
-
+    PlaySound(GameState, GetFirstSound(TranState->Assets, Asset_DungeonSound), true);
 
     
     for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
@@ -987,12 +985,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       if(Controller->ActionUp.EndedDown)
       {
 	ConHero->dSword = v2{0.0f, 1.0f};
-	ZoomRate = 1.0f;
       }
       if(Controller->ActionDown.EndedDown)
       {
 	ConHero->dSword = v2{0.0f, -1.0f};
-	ZoomRate = -1.0f;
       }
       if(Controller->ActionLeft.EndedDown)
       {
@@ -1171,6 +1167,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 		  Sword->DistanceLimit = 5.0f;
 		  MakeEntitySpatial(Sword, Entity->P, 5.0f*V3(ConHero->dSword, 0));
 		  AddCollisionRule(GameState, Sword->StorageIndex, Entity->StorageIndex, false);
+		  PlaySound(GameState, GetFirstSound(TranState->Assets, Asset_FireSound), false);
 		}
 		sim_entity *Staff = Entity->Staff.Ptr;
 		if(Staff)
@@ -1280,7 +1277,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	        MatchVector.E[Tag_Facing_Direction] = Entity->WizFacingDirection;
 	        asset_vector WeightVector = {};
 	        WeightVector.E[Tag_Facing_Direction] = 1.0f;
-	        bitmap_id Wizard = BestMatchAsset(TranState->Assets, Asset_Wizard, &MatchVector, &WeightVector);
+	        bitmap_id Wizard = BestMatchBitmap(TranState->Assets, Asset_Wizard, &MatchVector, &WeightVector);
 	        PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
 	        DrawHitpoints(Entity, RenderGroup);
         } break;
@@ -1428,5 +1425,94 @@ extern "C"
 GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
 {
   game_state *GameState = (game_state*)Memory->PermanentStorage;
-  GameOutputSound(GameState, SoundBuffer, 400);
+  transient_state* TranState = (transient_state*)Memory->TransientStorage;
+
+  temporary_memory MixerMemory = BeginTemporaryMemory(&TranState->TranArena);
+  
+  real32 *Channel0 = PushArray(&TranState->TranArena, SoundBuffer->SampleCount, real32);
+  real32 *Channel1 = PushArray(&TranState->TranArena, SoundBuffer->SampleCount, real32);
+
+  {
+    real32* Dest0 = Channel0;
+    real32* Dest1 = Channel1;
+    for (uint16 SampleIndex = 0; SampleIndex < SoundBuffer->SampleCount; ++SampleIndex)
+    {
+      *Dest0++ = 0.0f;
+      *Dest1++ = 0.0f;
+    }
+  }
+
+  for(playing_sound **PlayingSoundPtr = &GameState->FirstPlayingSound; *PlayingSoundPtr; )
+  {
+    playing_sound *PlayingSound = *PlayingSoundPtr;
+    bool32 SoundFinished = false;
+    loaded_sound* LoadedSound = GetSound(TranState->Assets, PlayingSound->ID);
+    if(LoadedSound)
+    {
+      real32 *Dest0 = Channel0;
+      real32 *Dest1 = Channel1;
+      real32 Volume0 = PlayingSound->Volumes[0];
+      real32 Volume1 = PlayingSound->Volumes[1];
+      uint32 SamplesToMix = SoundBuffer->SampleCount;
+      uint32 SamplesRemaing = LoadedSound->SampleCount - PlayingSound->SamplesPlayed;
+      if(SamplesToMix > SamplesRemaing)
+      {
+	SamplesToMix = SamplesRemaing;
+      }
+      for (uint32 SampleIndex = PlayingSound->SamplesPlayed; SampleIndex < PlayingSound->SamplesPlayed + SamplesToMix; ++SampleIndex)
+      {
+	real32 SampleValue = LoadedSound->Samples[0][SampleIndex];
+	*Dest0++ += SampleValue*Volume0;
+	*Dest1++ += SampleValue*Volume1;
+      }
+      PlayingSound->SamplesPlayed += SamplesToMix;
+      SoundFinished = (PlayingSound->SamplesPlayed == LoadedSound->SampleCount);
+    }
+    else
+    {
+      LoadSound(TranState->Assets, PlayingSound->ID);
+    }
+    if(SoundFinished)
+    {
+      if(PlayingSound->Loop)
+      {
+	PlayingSound->SamplesPlayed = 0;
+      }
+      else
+      {
+	*PlayingSoundPtr = PlayingSound->Next;
+	PlayingSound->Next = GameState->FirstFreePlayingSound;
+	GameState->FirstFreePlayingSound = PlayingSound;
+      }
+    }
+    else
+    {
+      PlayingSoundPtr = &PlayingSound->Next;
+    }
+  }
+  
+  int16 *SampleOut = SoundBuffer->Samples;
+
+  real32 *Source0 = Channel0;
+  real32 *Source1 = Channel1;
+
+  for(uint16 SampleIndex = 0; SampleIndex < SoundBuffer->SampleCount; ++SampleIndex)
+  {
+    real32 RealSample0 = *Source0++;
+    real32 RealSample1 = *Source1++;
+
+    if(RealSample0 > 32767.0f) RealSample0 = 32767.0f;
+    if(RealSample0 < -32768.0f) RealSample0 = -32768.0f;
+
+    if(RealSample1 > 32767.0f) RealSample1 = 32767.0f;
+    if(RealSample1 < -32768.0f) RealSample1 = -32768.0f;
+
+    int16 SampleValue0 = (int16)(RealSample0 + 0.5f);
+    int16 SampleValue1 = (int16)(RealSample1 + 0.5f);
+
+
+    *SampleOut++ = SampleValue0;
+    *SampleOut++ = SampleValue1;
+  }
+  EndTemporaryMemory(MixerMemory);
 }

@@ -1,5 +1,4 @@
 #if !defined(HANDMADE_ASSET_H)
-
 enum asset_type_id
 {
   Asset_None,
@@ -13,6 +12,8 @@ enum asset_type_id
   Asset_Grass,
   Asset_Dirt,
   Asset_Wizard,
+  Asset_FireSound,
+  Asset_DungeonSound,
 
   Asset_Count,
 };
@@ -37,7 +38,11 @@ enum asset_tag_id
 struct asset_slot
 {
   asset_state State;
-  loaded_bitmap *Bitmap;
+  union
+  {
+    loaded_bitmap *Bitmap;
+    loaded_sound *Sound;
+  };
 };
 
 struct asset_vector
@@ -56,6 +61,12 @@ struct asset_bitmap_info
   v2 AlignPercentage;
   char *FileName;
 };
+
+struct asset_sound_info
+{
+  char* FileName;
+};
+
 
 struct asset_group
 {
@@ -96,6 +107,7 @@ struct game_assets
   asset_bitmap_info *BitmapInfos;
   
   uint32 SoundCounts;
+  asset_sound_info *SoundInfos;
   asset_slot *Sounds;
   
   //wizard Wizard;
@@ -103,6 +115,7 @@ struct game_assets
   uint32 DEBUGBitmapCount;
   uint32 DEBUGAssetCount;
   uint32 DEBUGTagCount;
+  uint32 DEBUGSoundCount;
   asset_type *DEBUGAssetType;
   asset *DEBUGAsset;
 };
@@ -117,7 +130,7 @@ struct wizard
   bitmap_id Wiz;
 };
 
-struct audio_id
+struct sound_id
 {
   uint32 Value;
 };
@@ -129,8 +142,15 @@ inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)
   return Result;
 }
 
+inline loaded_sound* GetSound(game_assets* Assets, sound_id ID)
+{
+    loaded_sound* Result = Assets->Sounds[ID.Value].Sound;
+
+    return Result;
+}
+
 internal void LaodBitmap(game_assets *Assets, bitmap_id ID);
-internal void LaodSound(game_assets *Assets, audio_id ID); 
+internal void LaodSound(game_assets *Assets, sound_id ID); 
 internal task_with_memory *BeginTaskWithMemory(transient_state *TranState);
 internal void EndTaskWithMemory(task_with_memory *Task);
 
