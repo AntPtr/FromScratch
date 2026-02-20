@@ -1,4 +1,5 @@
 #if !defined(HANDMADE_ASSET_H)
+
 enum asset_type_id
 {
   Asset_None,
@@ -24,6 +25,21 @@ enum asset_state
   AssetState_Queued,
   AssetState_Loaded,
   AssetState_Locked,
+};
+
+struct bitmap_id
+{
+  uint32 Value;
+};
+
+struct wizard
+{
+  bitmap_id Wiz;
+};
+
+struct sound_id
+{
+  uint32 Value;
 };
 
 enum asset_tag_id
@@ -65,6 +81,9 @@ struct asset_bitmap_info
 struct asset_sound_info
 {
   char* FileName;
+  uint32 FirstSampleIndex;
+  uint32 SampleCount;
+  sound_id NextIDToPlay;
 };
 
 
@@ -120,21 +139,6 @@ struct game_assets
   asset *DEBUGAsset;
 };
 
-struct bitmap_id
-{
-  uint32 Value;
-};
-
-struct wizard
-{
-  bitmap_id Wiz;
-};
-
-struct sound_id
-{
-  uint32 Value;
-};
-
 inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)
 {
   loaded_bitmap *Result = Assets->Bitmaps[ID.Value].Bitmap;
@@ -144,16 +148,37 @@ inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)
 
 inline loaded_sound* GetSound(game_assets* Assets, sound_id ID)
 {
-    loaded_sound* Result = Assets->Sounds[ID.Value].Sound;
+  loaded_sound* Result = Assets->Sounds[ID.Value].Sound;
 
-    return Result;
+  return Result;
 }
 
-internal void LaodBitmap(game_assets *Assets, bitmap_id ID);
-internal void LaodSound(game_assets *Assets, sound_id ID); 
+inline asset_sound_info* GetSoundInfo(game_assets* Assets, sound_id ID)
+{
+  //Assert(ID.Value < Assets->SoundCounts);
+  asset_sound_info* Info = Assets->SoundInfos + ID.Value;
+
+  return Info;
+}
+
+inline bool32 IsValid(bitmap_id ID)
+{
+  bool32 Result = (ID.Value != 0);
+
+  return Result;
+}
+
+inline bool32 IsValid(sound_id ID)
+{
+  bool32 Result = (ID.Value != 0);
+
+  return Result;
+}
+
+internal void LoadSound(game_assets *Assets, sound_id ID);
+internal void LoadBitmap(game_assets *Assets, bitmap_id ID);
 internal task_with_memory *BeginTaskWithMemory(transient_state *TranState);
 internal void EndTaskWithMemory(task_with_memory *Task);
-
 
 #define HANDMADE_ASSET_H
 #endif

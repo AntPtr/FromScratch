@@ -61,6 +61,7 @@ typedef double real64;
 #include "handmade_entity.h"
 #include "handmade_render_group.h"
 
+
 struct memory_arena
 {
   memory_index Size;
@@ -85,7 +86,7 @@ struct task_with_memory
 };
 
 #include "handmade_asset.h"
-
+#include "handmade_audio.h"
 
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
 
@@ -99,6 +100,7 @@ struct task_with_memory
 #define Align16(value) ((value + 15) & ~15)
 
 #if H_INTERNAL
+
 struct debug_read_file_result
 {
   uint32 ContentSize;
@@ -270,15 +272,6 @@ struct ground_buffer
   loaded_bitmap Bitmap;
 };
 
-struct playing_sound
-{
-  real32 Volumes[2];
-  uint32 SamplesPlayed;
-  sound_id ID;
-  playing_sound *Next;
-  bool32 Loop;
-};
-
 struct game_state
 {
   bool32 IsInitialized;
@@ -316,8 +309,7 @@ struct game_state
   uint32 TestSampleIndex;
   bool32 PlayAudio;
 
-  playing_sound *FirstPlayingSound;
-  playing_sound *FirstFreePlayingSound;
+  audio_state AudioState;
   
   real32 Time;
 };

@@ -236,7 +236,7 @@ inline void PushBitmap(render_group *Group, bitmap_id ID, v3 Offset, real32 Heig
   }
   else
   {
-    LaodBitmap(Group->Assets, ID);
+    LoadBitmap(Group->Assets, ID);
     ++Group->MissingBitmapCounts;
   }
 }
