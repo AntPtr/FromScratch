@@ -1,7 +1,10 @@
 #if !defined(HANDMADE_AUDIO_H)
 struct playing_sound
 {
-  real32 Volumes[2];
+  v2 CurrentVolume;
+  v2 TargetVolume;
+  v2 dCurrentVolume;
+  
   uint32 SamplesPlayed;
   sound_id ID;
   playing_sound *Next;

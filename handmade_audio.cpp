@@ -24,14 +24,30 @@ void GameOutputSound(game_state *GameState, game_sound_output_buffer *SoundBuffe
     }
 }
 
+internal void ChangeVolume(audio_state *AudioState, playing_sound *Sound, real32 FadeDurationInSeconds, v2 Volume)
+{
+  if(FadeDurationInSeconds <= 0.0f)
+  {
+    Sound->CurrentVolume = Sound->TargetVolume = Volume; 
+  }
+  else
+  {
+    real32 OneOverFade = 1.0f / FadeDurationInSeconds;
+    Sound->TargetVolume = Volume;
+    Sound->dCurrentVolume = (Sound->TargetVolume - Sound->CurrentVolume)*OneOverFade;
+  }
+}
 
 internal void OutputPlaySound(audio_state *AudioState, game_sound_output_buffer *SoundBuffer, game_assets *Assets, memory_arena *TempArena)
 {  
   temporary_memory MixerMemory = BeginTemporaryMemory(TempArena);
-  
+
+  real32 SecondsPerSample = 1.0f / (real32)(SoundBuffer->SamplesPerSecond);
   real32 *Channel0 = PushArray(TempArena, SoundBuffer->SampleCount, real32);
   real32 *Channel1 = PushArray(TempArena, SoundBuffer->SampleCount, real32);
-
+  
+#define ChannelCount 2
+  
   {
     real32* Dest0 = Channel0;
     real32* Dest1 = Channel1;
@@ -42,7 +58,7 @@ internal void OutputPlaySound(audio_state *AudioState, game_sound_output_buffer 
     }
   }
 
-   for(playing_sound **PlayingSoundPtr = &AudioState->FirstPlayingSound; *PlayingSoundPtr; )
+  for(playing_sound **PlayingSoundPtr = &AudioState->FirstPlayingSound; *PlayingSoundPtr; )
   {
     playing_sound *PlayingSound = *PlayingSoundPtr;
     bool32 SoundFinished = false;
@@ -50,35 +66,68 @@ internal void OutputPlaySound(audio_state *AudioState, game_sound_output_buffer 
     real32* Dest0 = Channel0;
     real32* Dest1 = Channel1;
 
-    while (TotalSamplesToMix && !SoundFinished)
+    while(TotalSamplesToMix && !SoundFinished)
     {
       loaded_sound* LoadedSound = GetSound(Assets, PlayingSound->ID);
-      if (LoadedSound)
+      if(LoadedSound)
       {
 	asset_sound_info* Info = GetSoundInfo(Assets, PlayingSound->ID);
 	PrefetchSound(Assets, Info->NextIDToPlay);
 
-	real32 Volume0 = PlayingSound->Volumes[0];
-	real32 Volume1 = PlayingSound->Volumes[1];
+	v2 Volume = PlayingSound->CurrentVolume;
+	v2 dVolume = SecondsPerSample*PlayingSound->dCurrentVolume; 
+	
 	uint32 SamplesToMix = TotalSamplesToMix;
 	uint32 SamplesRemaing = LoadedSound->SampleCount - PlayingSound->SamplesPlayed;
-	if (SamplesToMix > SamplesRemaing)
+	
+	if(SamplesToMix > SamplesRemaing)
 	{
 	  SamplesToMix = SamplesRemaing;
 	}
-	for (uint32 SampleIndex = PlayingSound->SamplesPlayed; SampleIndex < PlayingSound->SamplesPlayed + SamplesToMix; ++SampleIndex)
+
+	bool32 VolumeEnded[ChannelCount] = {};
+
+	for(uint32 ChannelIndex = 0; ChannelIndex < ArrayCount(VolumeEnded); ++ChannelIndex)
+	{
+	  if(dVolume.E[ChannelIndex] != 0.0f)
+	  {
+	    real32 DeltaVolume = PlayingSound->TargetVolume.E[ChannelIndex] - Volume.E[ChannelIndex];
+	    uint32 VolumeSampleCount = (uint32)(DeltaVolume / dVolume.E[ChannelIndex] + 0.5f);
+	    if(SamplesToMix > VolumeSampleCount)
+	    {
+	      SamplesToMix = VolumeSampleCount;
+	      VolumeEnded[ChannelIndex] = true;
+	    }
+	  }
+	}
+	
+	for(uint32 SampleIndex = PlayingSound->SamplesPlayed; SampleIndex < PlayingSound->SamplesPlayed + SamplesToMix; ++SampleIndex)
 	{
 	  real32 SampleValue = LoadedSound->Samples[0][SampleIndex];
-	  *Dest0++ += SampleValue * Volume0;
-	  *Dest1++ += SampleValue * Volume1;
+	  *Dest0++ += SampleValue * Volume.E[0];
+	  *Dest1++ += SampleValue * Volume.E[1];
+
+	  Volume += dVolume;
 	}
 
+	PlayingSound->CurrentVolume = Volume;
+
+	for(uint32 ChannelIndex = 0; ChannelIndex < ChannelCount; ++ChannelIndex)
+	{
+	  if(VolumeEnded[ChannelIndex])
+	  {
+	    PlayingSound->CurrentVolume.E[ChannelIndex] =
+	      PlayingSound->TargetVolume.E[ChannelIndex];
+	    PlayingSound->dCurrentVolume.E[ChannelIndex] = 0.0f;
+	  }
+	}
+	
 	PlayingSound->SamplesPlayed += SamplesToMix;
 	TotalSamplesToMix -= SamplesToMix;
 
-	if (PlayingSound->SamplesPlayed == LoadedSound->SampleCount)
+	if(PlayingSound->SamplesPlayed == LoadedSound->SampleCount)
 	{
-	  if (IsValid(Info->NextIDToPlay))
+	  if(IsValid(Info->NextIDToPlay))
 	  {
 	    PlayingSound->ID = Info->NextIDToPlay;
 	    PlayingSound->SamplesPlayed = 0;
@@ -145,8 +194,8 @@ internal playing_sound *PlaySound(audio_state *AudioState, sound_id SoundID, boo
   AudioState->FirstFreePlayingSound = PlayingSound->Next;
 
   PlayingSound->SamplesPlayed = 0;
-  PlayingSound->Volumes[0] = Volume.x;
-  PlayingSound->Volumes[1] = Volume.y;
+  PlayingSound->CurrentVolume = PlayingSound->TargetVolume = Volume;
+  PlayingSound->dCurrentVolume = v2{0.0f, 0.0f};
   PlayingSound->ID = SoundID;
   PlayingSound->Loop = Loop;
   

@@ -604,7 +604,9 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
   BeginAssetType(Assets, Asset_FireSound);
   AddSoundAsset(Assets, "test/fire.wav");
   EndAssetType(Assets);
-  
+
+  /*
+    Testing audio chunks streaming
   uint32 OneMusicChunk = 1*48000;
   uint32 TotalMusicSampleCount = 2*OneMusicChunk; //Check this in the debugger
   BeginAssetType(Assets, Asset_DungeonSound);
@@ -634,7 +636,14 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
 
   
   EndAssetType(Assets);
+  */
+  
+  BeginAssetType(Assets, Asset_DungeonSound);
+  asset* ThisMusic = AddSoundAsset(Assets, "test/dungeon.wav");
+  Assets->SoundInfos[ThisMusic->SlotID].NextIDToPlay.Value = ThisMusic->SlotID;
+  EndAssetType(Assets);
 
+  
   //Assets->Wizard.Wiz[0] = DEBUGLoadBMP("test/mage1.bmp", v2{0.5f, 0.05f});
   //Assets->Wizard.Wiz[1] = DEBUGLoadBMP("test/mage2.bmp", v2{0.5f, 0.05f});
 

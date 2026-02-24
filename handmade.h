@@ -310,7 +310,8 @@ struct game_state
   bool32 PlayAudio;
 
   audio_state AudioState;
-  
+  playing_sound *PlayingAudio;
+
   real32 Time;
 };
 

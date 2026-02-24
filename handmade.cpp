@@ -828,7 +828,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     TranState->HighPriorityQueue = Memory->HighPriorityQueue;
     TranState->LowPriorityQueue = Memory->LowPriorityQueue;
 
-    PlaySound(&GameState->AudioState, GetFirstSound(TranState->Assets, Asset_DungeonSound), true, v2{0.2f, 0.2f});
+    GameState->PlayingAudio = PlaySound(&GameState->AudioState, GetFirstSound(TranState->Assets, Asset_DungeonSound), true, v2{0.2f, 0.2f});
 
     
     for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
@@ -927,6 +927,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
         if(Controller->MoveDown.EndedDown)
         {
+	  ChangeVolume(&GameState->AudioState, GameState->PlayingAudio, 2.0f, v2{0.0f, 0.0f});
 	  ConHero->ddPlayer.y = -1.0f;
         }
       }
