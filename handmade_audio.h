@@ -5,7 +5,8 @@ struct playing_sound
   v2 TargetVolume;
   v2 dCurrentVolume;
   
-  uint32 SamplesPlayed;
+  real32 SamplesPlayed;
+  real32 dSample;
   sound_id ID;
   playing_sound *Next;
   bool32 Loop;

@@ -235,7 +235,7 @@ internal loaded_sound DEBUGLoadWAV(char* FileName, uint32 SectionSampleIndex, ui
     }
     Assert(ChannelCount && SampleData);
 
-    Result.SampleCount = SampleDataSize / (ChannelCount*sizeof(int16));
+    uint32 SampleCount = SampleDataSize / (ChannelCount*sizeof(int16));
     Result.ChannelCount = ChannelCount;
 
     if(ChannelCount == 1)
@@ -243,11 +243,11 @@ internal loaded_sound DEBUGLoadWAV(char* FileName, uint32 SectionSampleIndex, ui
       Result.Samples[0] = SampleData;
       Result.Samples[1] = 0;
     }
-    else if (ChannelCount == 2)
+    else if(ChannelCount == 2)
     {
       Result.Samples[0] = SampleData;
-      Result.Samples[1] = SampleData + Result.SampleCount;
-      for (uint32 SampleIndex = 0; SampleIndex < Result.SampleCount; ++SampleIndex)
+      Result.Samples[1] = SampleData + SampleCount;
+      for (uint32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
       {
 	int16 Source = SampleData[SampleIndex*2];
 	SampleData[SampleIndex*2] = SampleData[SampleIndex];
@@ -258,16 +258,31 @@ internal loaded_sound DEBUGLoadWAV(char* FileName, uint32 SectionSampleIndex, ui
     {
       Assert(!"Invalid number of channels in the WAV file");
     }
-        //For now works just the left channel
+    //For now works just the left channel
     Result.ChannelCount = 1;
+    bool32 AtEnd = true;
     if(SectionSampleCount)
     {
-      Result.SampleCount = SectionSampleCount;
+      SampleCount = SectionSampleCount;
+      AtEnd = ((SectionSampleIndex + SectionSampleCount) == SampleCount);
       for(uint32 ChannelIndex = 0; ChannelIndex <  Result.ChannelCount; ++ChannelIndex)
       {
 	Result.Samples[ChannelIndex] += SectionSampleIndex; 
       }
     }
+    if(AtEnd)
+    {
+      uint32 SampleCountAlign8 = Align8(SampleCount);
+      for(uint32 ChannelIndex = 0; ChannelIndex <  Result.ChannelCount; ++ChannelIndex)
+      {
+	for(uint32 SampleIndex = SampleCount; SampleIndex < SampleCount + 8; ++SampleIndex)
+	{
+	  Result.Samples[ChannelIndex][SampleIndex] = 0;
+	}
+      }
+    }
+
+    Result.SampleCount = SampleCount;
   }
   return Result;
 }
@@ -639,8 +654,7 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
   */
   
   BeginAssetType(Assets, Asset_DungeonSound);
-  asset* ThisMusic = AddSoundAsset(Assets, "test/dungeon.wav");
-  Assets->SoundInfos[ThisMusic->SlotID].NextIDToPlay.Value = ThisMusic->SlotID;
+  AddSoundAsset(Assets, "test/dungeon.wav");
   EndAssetType(Assets);
 
   

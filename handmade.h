@@ -97,6 +97,9 @@ struct task_with_memory
 #endif
 #define InvalidCodePath Assert(!"InvalidCodePath")
 #define InvalidDefaultCase default: {InvalidCodePath;} break
+#define AlingPow2(Value, Alignment) ((Value + (Alignment - 1)) & ~(Aligment - 1))
+#define Align4(value) ((value + 3) & ~3)
+#define Align8(value) ((value + 7) & ~7)
 #define Align16(value) ((value + 15) & ~15)
 
 #if H_INTERNAL

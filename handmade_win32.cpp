@@ -1104,7 +1104,8 @@ int WINAPI wWinMain(HINSTANCE Instance,
       Win32ClearSoundBuffer(&SoundOutput);
       SecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
 
-      int16 *Samples = (int16 *)VirtualAlloc(0, SoundOutput.SecondaryBufferSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+      uint32 MaxPossibleOver = 2*4*sizeof(uint16);
+      int16 *Samples = (int16 *)VirtualAlloc(0, SoundOutput.SecondaryBufferSize + MaxPossibleOver, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 #if H_INTERNAL
       LPVOID BaseAddress = (LPVOID)Terabytes(2);
 #else
@@ -1348,7 +1349,8 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    
 	      game_sound_output_buffer SoundBuffer = {};
 	      SoundBuffer.SamplesPerSecond = SoundOutput.SamplePerSecond;
-	      SoundBuffer.SampleCount = BytesToWrite / SoundOutput.BytesPerSample;
+	      SoundBuffer.SampleCount = Align8(BytesToWrite / SoundOutput.BytesPerSample);
+	      BytesToWrite = SoundBuffer.SampleCount*SoundOutput.BytesPerSample;
 	      SoundBuffer.Samples = Samples;
 	      if(Game.GetSoundSamples)
 	      {

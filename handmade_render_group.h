@@ -13,9 +13,9 @@ struct loaded_bitmap
 
 struct loaded_sound
 {
-    uint32 SampleCount;
-    uint32 ChannelCount;
-    int16 *Samples[2];
+  uint32 SampleCount;
+  uint32 ChannelCount;
+  int16 *Samples[2];
 };
 
 struct environment_map
