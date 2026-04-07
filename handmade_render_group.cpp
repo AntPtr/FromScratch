@@ -14,7 +14,7 @@ inline bilinear_sample BilinearSample(loaded_bitmap *Texture, int32 X, int32 Y)
   return Result;
 }
 
-inline v4 SRGB255ToLinear1(v4 C)
+/*inline v4 SRGB255ToLinear1(v4 C)
 {
   v4 Result;
   real32 Inv255 = 1.0f / 255.0f;
@@ -25,7 +25,7 @@ inline v4 SRGB255ToLinear1(v4 C)
   Result.a = Inv255*C.a;
 
   return Result;
-}
+  }*/
 
 inline v4 UnscaleAndBiasNormal(v4 Normal)
 {
@@ -40,7 +40,7 @@ inline v4 UnscaleAndBiasNormal(v4 Normal)
 
   return Result;
 }
-
+/*
 inline v4 Linear1ToSRGB255(v4 C)
 {
   v4 Result;
@@ -52,7 +52,7 @@ inline v4 Linear1ToSRGB255(v4 C)
   Result.a = One255*C.a;
 
   return Result;
-}
+  }*/
 
 inline v4 Unpack4Bytes(uint32 Value)
 {

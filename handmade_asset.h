@@ -97,7 +97,12 @@ struct asset
 {
   uint32 FirstTagIndex;
   uint32 OneLastPastTagIndex;
-  uint32 SlotID;
+
+  union
+  {
+    asset_bitmap_info Bitmap;
+    asset_sound_info Sound;
+  };
 };
 
 struct asset_type
@@ -121,34 +126,25 @@ struct game_assets
   uint32 TagCounts;
   asset_tag *Tags;
   
-  uint32 BitmapCounts;
-  asset_slot *Bitmaps;
-  asset_bitmap_info *BitmapInfos;
-  
-  uint32 SoundCounts;
-  asset_sound_info *SoundInfos;
-  asset_slot *Sounds;
-  
+  asset_slot *Slots;
   //wizard Wizard;
 
-  uint32 DEBUGBitmapCount;
   uint32 DEBUGAssetCount;
   uint32 DEBUGTagCount;
-  uint32 DEBUGSoundCount;
   asset_type *DEBUGAssetType;
   asset *DEBUGAsset;
 };
 
 inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)
 {
-  loaded_bitmap *Result = Assets->Bitmaps[ID.Value].Bitmap;
+  loaded_bitmap *Result = Assets->Slots[ID.Value].Bitmap;
 
   return Result;
 }
 
 inline loaded_sound* GetSound(game_assets* Assets, sound_id ID)
 {
-  loaded_sound* Result = Assets->Sounds[ID.Value].Sound;
+  loaded_sound* Result = Assets->Slots[ID.Value].Sound;
 
   return Result;
 }
@@ -156,7 +152,7 @@ inline loaded_sound* GetSound(game_assets* Assets, sound_id ID)
 inline asset_sound_info* GetSoundInfo(game_assets* Assets, sound_id ID)
 {
   //Assert(ID.Value < Assets->SoundCounts);
-  asset_sound_info* Info = Assets->SoundInfos + ID.Value;
+  asset_sound_info* Info = &Assets->Assets[ID.Value].Sound;
 
   return Info;
 }
