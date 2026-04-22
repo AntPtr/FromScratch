@@ -80,7 +80,7 @@ inline bitscan_result FindLastSignificantBit (uint32 Value)
 #else
   for(uint32 Test = 0; Test < 32; ++Test)
   {
-    if((1 << Result.Index) & Value)
+    if((1 << Test) & Value)
     {
       Result.Index = Test;
       Result.Found = true;

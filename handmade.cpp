@@ -562,12 +562,12 @@ internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName
   return Bitmap;
 }
 */
-internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName)
+/*internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName)
 {
   loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
   *Bitmap = DEBUGLoadBMP(FileName);
   return Bitmap;
-}
+  }*/
 
 #if defined __cplusplus
 extern "C"

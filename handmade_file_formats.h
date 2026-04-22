@@ -37,6 +37,16 @@ struct hha_header
   uint64 AssetTypeOffset;
 };
 
+struct sound_id
+{
+  uint32 Value;
+};
+
+struct bitmap_id
+{
+  uint32 Value;
+};
+
 struct hha_tag
 {
   uint32 ID;
@@ -52,7 +62,7 @@ struct hha_bitmap
 struct hha_sound
 {
   uint32 SampleCount;
-  uint32 NextIDToPlay;
+  sound_id NextIDToPlay;
   uint32 ChannelCount;
 };
 

@@ -14,16 +14,6 @@
 
 #define Assert(Expr) if(!(Expr)) {*(int *)0=0;}
 
-struct bitmap_id
-{
-  uint32 Value;
-};
-
-struct sound_id
-{
-  uint32 Value;
-};
-
 enum asset_type
 {
   AssetType_Sound,

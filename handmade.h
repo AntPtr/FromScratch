@@ -60,7 +60,7 @@ typedef double real64;
 #include "handmade_sim_region.h"
 #include "handmade_entity.h"
 #include "handmade_render_group.h"
-
+#include "handmade_file_formats.h"
 
 struct memory_arena
 {

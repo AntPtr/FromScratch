@@ -27,19 +27,9 @@ enum asset_state
   AssetState_Locked,
 };
 
-struct bitmap_id
-{
-  uint32 Value;
-};
-
 struct wizard
 {
   bitmap_id Wiz;
-};
-
-struct sound_id
-{
-  uint32 Value;
 };
 
 enum asset_tag_id
@@ -95,14 +85,15 @@ struct asset_group
 
 struct asset
 {
-  uint32 FirstTagIndex;
+  hha_asset HHA;
+  /*uint32 FirstTagIndex;
   uint32 OneLastPastTagIndex;
 
   union
   {
     asset_bitmap_info Bitmap;
     asset_sound_info Sound;
-  };
+    };*/
 };
 
 struct asset_type
@@ -127,12 +118,15 @@ struct game_assets
   asset_tag *Tags;
   
   asset_slot *Slots;
-  //wizard Wizard;
 
+  uint8 *HHAContents;
+  //wizard Wizard;
+#if 0
   uint32 DEBUGAssetCount;
   uint32 DEBUGTagCount;
   asset_type *DEBUGAssetType;
   asset *DEBUGAsset;
+#endif  
 };
 
 inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)
@@ -149,10 +143,10 @@ inline loaded_sound* GetSound(game_assets* Assets, sound_id ID)
   return Result;
 }
 
-inline asset_sound_info* GetSoundInfo(game_assets* Assets, sound_id ID)
+inline hha_sound* GetSoundInfo(game_assets* Assets, sound_id ID)
 {
   //Assert(ID.Value < Assets->SoundCounts);
-  asset_sound_info* Info = &Assets->Assets[ID.Value].Sound;
+  hha_sound* Info = &Assets->Assets[ID.Value].HHA.Sound;
 
   return Info;
 }

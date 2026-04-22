@@ -1,3 +1,4 @@
+#if 0
 #pragma pack(push, 1)
 struct bitmap_header
 {
@@ -32,10 +33,10 @@ struct WAVE_header
 #define RIFF_CODE(a, b, c, d)(((uint32)(a) << 0)  | ((uint32)(b) << 8) | ((uint32)(c) << 16) | ((uint32)(d) << 24))
 enum
 {
-    WAVE_ChunkID_fmt = RIFF_CODE('f', 'm', 't', ' '),
-    WAVE_ChunkID_RIFF = RIFF_CODE('R', 'I', 'F', 'F'),
-    WAVE_ChunkID_WAVE = RIFF_CODE('W', 'A', 'V', 'E'),
-    WAVE_ChunkID_data = RIFF_CODE('d', 'a', 't', 'a'),
+  WAVE_ChunkID_fmt = RIFF_CODE('f', 'm', 't', ' '),
+  WAVE_ChunkID_RIFF = RIFF_CODE('R', 'I', 'F', 'F'),
+  WAVE_ChunkID_WAVE = RIFF_CODE('W', 'A', 'V', 'E'),
+  WAVE_ChunkID_data = RIFF_CODE('d', 'a', 't', 'a'),
 };
 
 struct WAVE_chunk
@@ -286,6 +287,7 @@ internal loaded_sound DEBUGLoadWAV(char* FileName, uint32 SectionSampleIndex, ui
   }
   return Result;
 }
+#endif
 
 struct load_bitmap_work
 {
@@ -296,13 +298,21 @@ struct load_bitmap_work
   asset_state FinalState;
 };
 
+
 internal PLATFORM_WORK_QUEUE_CALLBACK(LoadBitmapWork)
 {
   load_bitmap_work *Work = (load_bitmap_work*)Data;
 
-  asset_bitmap_info *Info = &Work->Assets->Assets[Work->ID.Value].Bitmap;
-  
-  *Work->Bitmap = DEBUGLoadBMP(Info->FileName, Info->AlignPercentage);
+  hha_asset *HHAAsset = &Work->Assets->Assets[Work->ID.Value].HHA;
+  hha_bitmap *Info = &HHAAsset->Bitmap;
+  loaded_bitmap *Bitmap = Work->Bitmap;
+
+  Bitmap->AlignPercentage = v2{Info->AlignPercentage[0], Info->AlignPercentage[1]};
+  Bitmap->WidthOverHeight = (real32)Info->Dim[0] / (real32)Info->Dim[1];
+  Bitmap->Width = Info->Dim[0];
+  Bitmap->Height = Info->Dim[1];
+  Bitmap->Pitch = 4*Info->Dim[0];
+  Bitmap->Memory = Work->Assets->HHAContents + HHAAsset->DataOffset;
 
   CompletePreviousWriteBeforeFutureWrites;
   
@@ -342,7 +352,7 @@ internal uint32 BestMatchAsset(game_assets* Assets, asset_type_id TypeID, asset_
   {
     asset *Asset = Assets->Assets + AssetIndex;
     real32 TotalWeigthDifference = 0.0f;
-    for (uint32 TagIndex = Asset->FirstTagIndex; TagIndex < Asset->OneLastPastTagIndex; ++TagIndex)
+    for (uint32 TagIndex = Asset->HHA.FirstTagIndex; TagIndex < Asset->HHA.OneLastPastTagIndex; ++TagIndex)
     {
       asset_tag* Tag = Assets->Tags + TagIndex;
       real32 A = MatchVector->E[Tag->ID];
@@ -429,10 +439,20 @@ struct load_sound_work
 internal PLATFORM_WORK_QUEUE_CALLBACK(LoadSoundWork)
 {
   load_sound_work* Work = (load_sound_work*)Data;
+  hha_asset *HHAAsset = &Work->Assets->Assets[Work->ID.Value].HHA;
+  hha_sound* Info = &HHAAsset->Sound;
   
-  asset_sound_info* Info = &Work->Assets->Assets[Work->ID.Value].Sound;
-  
-  *Work->Sound = DEBUGLoadWAV(Info->FileName, Info->FirstSampleIndex, Info->SampleCount);
+  loaded_sound *Sound = Work->Sound;
+
+  Sound->SampleCount = Info->SampleCount;
+  Sound->ChannelCount = Info->ChannelCount;
+  uint64 SampleDataOffset = HHAAsset->DataOffset;
+  Assert(Sound->ChannelCount < ArrayCount(Sound->Samples));
+  for(uint32 ChannelIndex = 0; ChannelIndex < Sound->ChannelCount; ++ChannelIndex)
+  {
+    Sound->Samples[ChannelIndex] = (int16 *)(Work->Assets->HHAContents + SampleDataOffset);
+    SampleDataOffset += Sound->SampleCount*sizeof(uint16);
+  }
   
   CompletePreviousWriteBeforeFutureWrites;
 
@@ -461,6 +481,7 @@ internal void LoadSound(game_assets *Assets, sound_id ID)
   }
 }
 
+#if 0
 internal void BeginAssetType(game_assets *Assets, asset_type_id TypeID)
 {
   Assert(Assets->DEBUGAssetType == 0);
@@ -518,6 +539,8 @@ internal void AddTag(game_assets *Assets, asset_tag_id ID, real32 Value)
   Tag->Value = Value;
 }
 
+#endif 
+
 internal void PrefetchBitmap(game_assets* Assets, bitmap_id ID) { LoadBitmap(Assets, ID); }
 internal void PrefetchSound(game_assets* Assets, sound_id ID) { LoadSound(Assets, ID); }
 
@@ -536,12 +559,63 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
 
   Assets->AssetCounts = 255*2*Asset_Count;
   Assets->Assets = PushArray(Arena, Assets->AssetCounts, asset);
-  Assets->Slots = PushArray(Arena, Assets->AssetCounts, asset_slot);
-
 
   Assets->TagCounts = 1024*Asset_Count;
   Assets->Tags = PushArray(Arena, Assets->TagCounts, asset_tag);
 
+  debug_read_file_result ReadResult = DEBUGReadEntireFile("test.fam");
+  if(ReadResult.ContentSize != 0)
+  {
+    hha_header *Header = (hha_header *)(ReadResult.Contents);
+    Assert(Header->HeaderCode == HHA_HEADER_CODE);
+    Assert(Header->Version == HHA_VERSION);
+    
+    Assets->TagCounts = Header->TagCount;
+    Assets->AssetCounts = Header->AssetCount;
+    Assets->Tags = PushArray(Arena, Assets->TagCounts, asset_tag);
+    Assets->Assets = PushArray(Arena, Assets->AssetCounts, asset);
+    Assets->Slots = PushArray(Arena, Assets->AssetCounts, asset_slot);
+
+    hha_tag *HHATag = (hha_tag *)((uint8 *)ReadResult.Contents + Header->TagsOffset);
+    hha_asset *HHAAssets = (hha_asset *)((uint8 *)ReadResult.Contents + Header->AssetOffset);
+    hha_asset_type *HHAAssetTypes = (hha_asset_type *)((uint8 *)ReadResult.Contents + Header->AssetTypeOffset);
+
+    
+    for(uint32 TagIndex = 0; TagIndex < Header->TagCount; ++TagIndex)
+    {
+      hha_tag *Source = HHATag + TagIndex;
+      asset_tag *Dest = Assets->Tags + TagIndex;
+
+      Dest->ID = Source->ID;
+      Dest->Value = Source->Value;
+    }
+
+    for(uint32 AssetIndex = 0; AssetIndex < Header->AssetCount; ++AssetIndex)
+    {
+      hha_asset *Source = HHAAssets + AssetIndex;
+      asset *Dest = Assets->Assets + AssetIndex;
+
+      Dest->HHA = *Source;
+    }
+
+    for(uint32 AssetTypeIndex = 0; AssetTypeIndex < Header->AssetTypeCount; ++AssetTypeIndex)
+    {
+      hha_asset_type *Source = HHAAssetTypes + AssetTypeIndex;
+      if(Source->TypeID < Asset_Count)
+      {
+	asset_type *Dest = Assets->AssetTypes + Source->TypeID;
+	Assert(Dest->FirstAssetIndex == 0);
+	Assert(Dest->OnePastLastAssetIndex == 0);
+	Dest->FirstAssetIndex = Source->FirstAssetIndex;
+	Dest->OnePastLastAssetIndex = Source->OnePastLastAssetIndex;
+      }
+    }
+
+    Assets->HHAContents = (uint8 *)ReadResult.Contents;
+    
+  }
+  
+#if 0
   Assets->DEBUGAssetCount = 1;
   
   BeginAssetType(Assets, Asset_BackGround);
@@ -630,6 +704,6 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
   
   //Assets->Wizard.Wiz[0] = DEBUGLoadBMP("test/mage1.bmp", v2{0.5f, 0.05f});
   //Assets->Wizard.Wiz[1] = DEBUGLoadBMP("test/mage2.bmp", v2{0.5f, 0.05f});
-
+#endif
   return Assets;
 }

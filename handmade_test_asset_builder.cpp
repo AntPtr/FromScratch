@@ -55,7 +55,7 @@ internal sound_id AddSoundAsset(game_assets* Assets, char* FileName, uint32 Firs
     HHA->FirstTagIndex = Assets->TagCount;
     HHA->OneLastPastTagIndex = HHA->FirstTagIndex;
     HHA->Sound.SampleCount = SampleCount;
-    HHA->Sound.NextIDToPlay = 0;
+    HHA->Sound.NextIDToPlay.Value = 0;
 
     Source->FileName = FileName;
     Source->Type = AssetType_Sound;
