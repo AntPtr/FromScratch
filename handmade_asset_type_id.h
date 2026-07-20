@@ -14,6 +14,7 @@ enum asset_type_id
   Asset_Wizard,
   Asset_FireSound,
   Asset_DungeonSound,
+  Asset_Familiar,
 
   Asset_Count,
 };

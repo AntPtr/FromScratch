@@ -55,7 +55,7 @@ internal sound_id AddSoundAsset(game_assets* Assets, char* FileName, uint32 Firs
     HHA->FirstTagIndex = Assets->TagCount;
     HHA->OneLastPastTagIndex = HHA->FirstTagIndex;
     HHA->Sound.SampleCount = SampleCount;
-    HHA->Sound.NextIDToPlay.Value = 0;
+    HHA->Sound.Chain = HHASoundChain_None;
 
     Source->FileName = FileName;
     Source->Type = AssetType_Sound;
@@ -396,66 +396,9 @@ internal loaded_sound LoadWAV(char* FileName, uint32 SectionSampleIndex, uint32 
   return Result;
 }
 
-
-int main(int ArgCount, char **Args)
+internal void WriteHHA(game_assets *Assets, char *Filename)
 {
-  game_assets Assets_;
-  game_assets *Assets = &Assets_;
-
-  Assets->AssetCount = 1;
-  Assets->TagCount = 1;
-  Assets->DEBUGAssetType = 0;
-  Assets->AssetIndex = 0;
-  
-  BeginAssetType(Assets, Asset_BackGround);
-  AddBitmapAsset(Assets, "test/test_img.bmp", 0.5f, 0.5f);
-  EndAssetType(Assets);
-
-  BeginAssetType(Assets, Asset_Wall);
-  AddBitmapAsset(Assets, "test/brick.bmp", 0.5f, 0.0f);
-  EndAssetType(Assets);
-
-  BeginAssetType(Assets, Asset_Monster);
-  AddBitmapAsset(Assets, "test/monster.bmp", 0.4f, 0.05f);
-  EndAssetType(Assets);
-
-  BeginAssetType(Assets, Asset_Sword);
-  AddBitmapAsset(Assets, "test/fireball.bmp", 0.5f, 0.5f);
-  EndAssetType(Assets);
-
-  BeginAssetType(Assets, Asset_Stair);
-  AddBitmapAsset(Assets, "test/staff.bmp", 0.5f, 0.5f);
-  EndAssetType(Assets);
-
-  BeginAssetType(Assets, Asset_Grass);
-  AddBitmapAsset(Assets, "test/Grass.bmp");
-  EndAssetType(Assets);
-
-  BeginAssetType(Assets, Asset_Dirt);
-  AddBitmapAsset(Assets, "test/Dirt.bmp");
-  EndAssetType(Assets);
-  
-#define Tau32 6.28318530718f
-
-  real32 AngleLeft = 0.5f*Tau32;
-  real32 AngleRigth = 0*Tau32;
-
-  BeginAssetType(Assets, Asset_Wizard);
-  AddBitmapAsset(Assets, "test/mage1.bmp", 0.5f, 0.05f);
-  AddTag(Assets, Tag_Facing_Direction, AngleRigth);
-  AddBitmapAsset(Assets, "test/mage2.bmp", 0.5f, 0.05f);
-  AddTag(Assets, Tag_Facing_Direction, AngleLeft);
-  EndAssetType(Assets);
-
-  BeginAssetType(Assets, Asset_FireSound);
-  AddSoundAsset(Assets, "test/fire.wav");
-  EndAssetType(Assets);
-  
-  BeginAssetType(Assets, Asset_DungeonSound);
-  AddSoundAsset(Assets, "test/dungeon.wav");
-  EndAssetType(Assets);
-
-  FILE *Out = fopen("test.fam", "wb");
+  FILE *Out = fopen(Filename, "wb");
   if(Out)
   {
     hha_header Header = {};
@@ -515,7 +458,108 @@ int main(int ArgCount, char **Args)
   else
   {
     printf("ERROR: file can't be open!");
-  }
-#if 0
-#endif
+  } 
+}
+
+
+internal void Initialize(game_assets *Assets)
+{
+  Assets->AssetCount = 1;
+  Assets->TagCount = 1;
+  Assets->DEBUGAssetType = 0;
+  Assets->AssetIndex = 0;
+
+  Assets->AssetTypeCount = Asset_Count;
+  memset(Assets->AssetTypes, 0, sizeof(Assets->AssetTypes));
+}
+
+internal void WriteHero()
+{
+#define Tau32 6.28318530718f
+
+  game_assets Assets_;
+  game_assets *Assets = &Assets_;
+
+  Initialize(Assets);
+  
+  real32 AngleLeft = 0.5f*Tau32;
+  real32 AngleRigth = 0*Tau32;
+
+  BeginAssetType(Assets, Asset_Wizard);
+  AddBitmapAsset(Assets, "test/mage1.bmp", 0.5f, 0.05f);
+  AddTag(Assets, Tag_Facing_Direction, AngleRigth);
+  AddBitmapAsset(Assets, "test/mage2.bmp", 0.5f, 0.05f);
+  AddTag(Assets, Tag_Facing_Direction, AngleLeft);
+  EndAssetType(Assets);
+
+  WriteHHA(Assets, "test1.hha");
+}
+
+internal void WriteNonHero()
+{
+  game_assets Assets_;
+  game_assets *Assets = &Assets_;
+
+  Initialize(Assets);
+  
+  BeginAssetType(Assets, Asset_BackGround);
+  AddBitmapAsset(Assets, "test/test_img.bmp", 0.5f, 0.5f);
+  EndAssetType(Assets);
+
+  BeginAssetType(Assets, Asset_Wall);
+  AddBitmapAsset(Assets, "test/brick.bmp", 0.5f, 0.0f);
+  EndAssetType(Assets);
+
+  BeginAssetType(Assets, Asset_Monster);
+  AddBitmapAsset(Assets, "test/monster.bmp", 0.4f, 0.05f);
+  EndAssetType(Assets);
+
+  BeginAssetType(Assets, Asset_Sword);
+  AddBitmapAsset(Assets, "test/fireball.bmp", 0.5f, 0.5f);
+  EndAssetType(Assets);
+
+  BeginAssetType(Assets, Asset_Stair);
+  AddBitmapAsset(Assets, "test/staff.bmp", 0.5f, 0.5f);
+  EndAssetType(Assets);
+
+  BeginAssetType(Assets, Asset_Grass);
+  AddBitmapAsset(Assets, "test/Grass.bmp");
+  EndAssetType(Assets);
+
+  BeginAssetType(Assets, Asset_Dirt);
+  AddBitmapAsset(Assets, "test/Dirt.bmp");
+  EndAssetType(Assets);
+
+  BeginAssetType(Assets, Asset_Familiar);
+  AddBitmapAsset(Assets, "test/Hank.bmp");
+  EndAssetType(Assets);
+
+  WriteHHA(Assets, "test2.hha");
+
+}
+
+internal void WriteSounds()
+{
+  game_assets Assets_;
+  game_assets *Assets = &Assets_;
+
+  Initialize(Assets);
+   
+  BeginAssetType(Assets, Asset_FireSound);
+  AddSoundAsset(Assets, "test/fire.wav");
+  EndAssetType(Assets);
+  
+  BeginAssetType(Assets, Asset_DungeonSound);
+  AddSoundAsset(Assets, "test/dungeon.wav");
+  EndAssetType(Assets);
+
+  WriteHHA(Assets, "test3.hha");
+
+}
+
+int main(int ArgCount, char **Args)
+{
+  WriteHero();
+  WriteNonHero();
+  WriteSounds();
 }

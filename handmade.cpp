@@ -435,7 +435,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
     if(AllResourcesArePresent(RenderGroup))
     {
       GroundBuffer->P = *ChunkP;
-      PlatformAddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
+      Platform.AddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
     }
     else
     {
@@ -557,7 +557,7 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
 /*
 internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName, int32 AlignX, int32 TopDownAlignY)
 {
-  loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
+loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
   *Bitmap = DEBUGLoadBMP(FileName, AlignX, TopDownAlignY);
   return Bitmap;
 }
@@ -578,8 +578,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   DebugGlobalMemory = Memory;
 #endif
 
-  PlatformAddEntry = Memory->PlatformAddEntry;
-  PlatformCompleteAllWork = Memory->PlatformCompleteAllWork;
+  Platform = Memory->PlatformAPI;
   BEGIN_TIMED_BLOCK(GameUpdateAndRender);
   Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
   Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) == (ArrayCount(Input->Controllers[0].Buttons)));
@@ -594,7 +593,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->XOffset = 0;
     GameState->YOffset = 0;*/
     InitializeArena(&GameState->WorldArena, Memory->PermanentStorageSize - sizeof(game_state), (uint8 *)Memory->PermanentStorage + sizeof(game_state));
-    DEBUGReadEntireFile = Memory->DEBUGPlatformReadEntireFile;
     uint32 TilesPerWidth = 17;
     uint32 TilesPerHeight = 9;    
     uint32 GroundBufferWidth = 256;
@@ -1162,7 +1160,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {  
 	  sim_entity *ClosestHero = 0;
 	  real32 ClosestHeroDSq = Square(10.0f); //Maximum search radius
-#if 0
+#if 1
 	  sim_entity *TestEntity = SimRegion->Entities;
 	  for(uint32 TestEntityIndex = 0; TestEntityIndex < SimRegion->EntityCount; ++TestEntityIndex, ++TestEntity)
 	  {
@@ -1250,7 +1248,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         case EntityType_Familiar:
         {  
           //loaded_bitmap *Wizard = &TranState->Assets->Wizard.Wiz[Entity->WizFacingDirection];
-	  PushBitmap(RenderGroup, GetFirstBitmap(TranState->Assets, Asset_Wizard), v3{0, 0, 0}, 1.8f);
+	  PushBitmap(RenderGroup, GetFirstBitmap(TranState->Assets, Asset_Familiar), v3{0, 0, 0}, 2.5f);
         } break;
 	
         case EntityType_Staff:

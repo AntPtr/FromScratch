@@ -85,6 +85,73 @@ struct task_with_memory
   temporary_memory MemoryFlush;
 };
 
+typedef struct platform_file_handle
+{
+  bool32 NoErrors;
+} platform_file_handle;
+
+typedef struct platform_file_group
+{
+  uint32 FileCount;
+} platform_file_group;
+
+struct debug_read_file_result
+{
+  uint32 ContentSize;
+  void* Contents;
+};
+
+#define PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(name) platform_file_group *name(char *Type)
+typedef PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(platform_get_all_file_of_type_begin);
+
+#define PLATFORM_GET_ALL_FILE_OF_TYPE_END(name) void name(platform_file_group *FileGroup)
+typedef PLATFORM_GET_ALL_FILE_OF_TYPE_END(platform_get_all_file_of_type_end);
+
+#define PLATFORM_OPEN_FILE(name) platform_file_handle *name(platform_file_group *FileGroup)
+typedef PLATFORM_OPEN_FILE(platform_open_next_file);
+
+#define PLATFORM_READ_DATA_FROM_FILE(name) void name(platform_file_handle *Source, uint64 Offset, uint64 Size, void *Dest)
+typedef PLATFORM_READ_DATA_FROM_FILE(platform_read_data_from_file);
+
+#define PLATFORM_FILE_ERROR(name) void name(platform_file_handle *Handle, char *Message)
+typedef PLATFORM_FILE_ERROR(platform_file_error);
+
+#define PlatformNoFileErrors(Handle) ((Handle)->NoErrors)
+
+struct platform_work_queue;
+#define PLATFORM_WORK_QUEUE_CALLBACK(name) void name(platform_work_queue *Queue, void *Data)
+typedef PLATFORM_WORK_QUEUE_CALLBACK(platform_work_queue_callback);
+
+typedef void platform_add_entry(platform_work_queue *Queue, platform_work_queue_callback *Callback, void *Data);
+typedef void platform_complete_all_work(platform_work_queue *Queue);
+
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name (void *Memory)
+typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
+
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name (char *Filename)
+typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
+
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) bool32 name (char *Filename, uint32 MemorySize, void *Memory)
+typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
+
+struct platform_api
+{ 
+  platform_add_entry *AddEntry;
+  platform_complete_all_work *CompleteAllWork;
+
+  platform_get_all_file_of_type_begin *GetAllFilesOfTypeBegin;
+  platform_get_all_file_of_type_end *GetAllFilesOfTypeEnd;
+  platform_open_next_file *OpenNextFile;
+  platform_read_data_from_file *ReadDataFromFile;
+  platform_file_error *FileError;
+ 
+  debug_platform_free_file_memory *DEBUGFreeFileMemory;
+  debug_platform_read_entire_file *DEBUGReadEntireFile;
+  debug_platform_write_entire_file *DEBUGWriteEntireFile;
+};
+
+global_variable platform_api Platform;
+
 #include "handmade_asset.h"
 #include "handmade_audio.h"
 
@@ -104,12 +171,6 @@ struct task_with_memory
 
 #if H_INTERNAL
 
-struct debug_read_file_result
-{
-  uint32 ContentSize;
-  void* Contents;
-};
-
 enum
 {
   DebugCycleCounter_GameUpdateAndRender,
@@ -124,15 +185,6 @@ typedef struct debug_cycle_counter
   uint64 CycleCount;
   uint32 HitCount;
 } debug_cycle_counter;
-
-#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name (void *Memory)
-typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
-
-#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) debug_read_file_result name (char *Filename)
-typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
-
-#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) bool32 name (char *Filename, uint32 MemorySize, void *Memory)
-typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
 
 extern struct game_memory *DebugGlobalMemory = 0;
 
@@ -318,14 +370,6 @@ struct game_state
   real32 Time;
 };
 
-struct platform_work_queue;
-#define PLATFORM_WORK_QUEUE_CALLBACK(name) void name(platform_work_queue *Queue, void *Data)
-typedef PLATFORM_WORK_QUEUE_CALLBACK(platform_work_queue_callback);
-
-typedef void platform_add_entry(platform_work_queue *Queue, platform_work_queue_callback *Callback, void *Data);
-typedef void platform_complete_all_work(platform_work_queue *Queue);
-
-
 struct transient_state
 {
   bool32 Initialized;
@@ -357,13 +401,9 @@ struct game_memory
 
   platform_work_queue *HighPriorityQueue;
   platform_work_queue *LowPriorityQueue;
-  
-  platform_add_entry *PlatformAddEntry;
-  platform_complete_all_work *PlatformCompleteAllWork;
-  
-  debug_platform_free_file_memory *DEBUGPlatformFreeFileMemory;
-  debug_platform_read_entire_file *DEBUGPlatformReadEntireFile;
-  debug_platform_write_entire_file *DEBUGPlatformWriteEntireFile;
+
+  platform_api PlatformAPI;
+
 #if H_INTERNAL
   debug_cycle_counter Counter[DebugCycleCounter_Count];
 #endif
@@ -420,6 +460,15 @@ inline void ZeroSize(memory_index Size, void *Ptr)
   }
 }
 
+inline void Copy(memory_index Size, void *SourceInit, void *DestInit)
+{
+  uint8 *Source = (uint8*)SourceInit;
+  uint8 *Dest = (uint8*)DestInit;
+  while(Size--)
+  {
+    *Dest++ = *Source++;
+  }
+}
 
 inline temporary_memory BeginTemporaryMemory(memory_arena *Arena)
 {
@@ -476,9 +525,11 @@ internal void AddCollisionRule(game_state *GameState, uint32 StorageIndexA, uint
 
 internal void ClearCollisionRulesFor(game_state *GameState, uint32 StorageIndex);
 
+/*
 global_variable platform_add_entry *PlatformAddEntry;
 global_variable platform_complete_all_work *PlatformCompleteAllWork;
 global_variable debug_platform_read_entire_file *DEBUGReadEntireFile;
+*/
 
 #define HANDMADE_H
 #endif

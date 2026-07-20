@@ -15,6 +15,7 @@ enum asset_type_id
   Asset_Wizard,
   Asset_FireSound,
   Asset_DungeonSound,
+  Asset_Familiar,
 
   Asset_Count,
 };
@@ -82,24 +83,25 @@ struct asset_group
   uint32 FirstTagIndex;
   uint32 OnePastLastTagIndex;
 };
-
-struct asset
-{
-  hha_asset HHA;
-  /*uint32 FirstTagIndex;
-  uint32 OneLastPastTagIndex;
-
-  union
-  {
-    asset_bitmap_info Bitmap;
-    asset_sound_info Sound;
-    };*/
-};
-
+ 
 struct asset_type
 {
   uint32 FirstAssetIndex;
   uint32 OnePastLastAssetIndex;
+};
+
+struct asset_file
+{
+  platform_file_handle *Handle;
+  hha_header Header;
+  hha_asset_type *AssetTypeArray;
+  uint32 TagBase;
+};
+
+struct asset
+{
+  hha_asset HHA;
+  uint32 FileIndex;
 };
 
 struct game_assets
@@ -110,18 +112,21 @@ struct game_assets
   asset_type AssetTypes[Asset_Count];
 
   real32 TagRange[Tag_Count];
+
+  uint32 FileCount;
+  asset_file *Files;
   
   uint32 AssetCounts;
   asset *Assets;
 
   uint32 TagCounts;
-  asset_tag *Tags;
+  hha_tag *Tags;
   
   asset_slot *Slots;
-
-  uint8 *HHAContents;
   //wizard Wizard;
 #if 0
+  uint8 *HHAContents;
+
   uint32 DEBUGAssetCount;
   uint32 DEBUGTagCount;
   asset_type *DEBUGAssetType;
@@ -131,15 +136,25 @@ struct game_assets
 
 inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)
 {
-  loaded_bitmap *Result = Assets->Slots[ID.Value].Bitmap;
-
+  asset_slot *Slot = Assets->Slots + ID.Value;
+  loaded_bitmap *Result = 0;
+  if(Slot->State >= AssetState_Loaded)
+  {
+    CompletePreviousReadsBeforeFutureReads;
+    Result = Slot->Bitmap;
+  }
   return Result;
 }
 
 inline loaded_sound* GetSound(game_assets* Assets, sound_id ID)
 {
-  loaded_sound* Result = Assets->Slots[ID.Value].Sound;
-
+  asset_slot *Slot = Assets->Slots + ID.Value;
+  loaded_sound *Result = 0;
+  if(Slot->State >= AssetState_Loaded)
+  {
+    CompletePreviousReadsBeforeFutureReads;
+    Result = Slot->Sound;
+  }
   return Result;
 }
 
@@ -161,6 +176,36 @@ inline bool32 IsValid(bitmap_id ID)
 inline bool32 IsValid(sound_id ID)
 {
   bool32 Result = (ID.Value != 0);
+
+  return Result;
+}
+
+inline sound_id  GetNextSoundInChain(game_assets *Assets, sound_id ID)
+{
+  sound_id Result = {};
+  hha_sound *Info = GetSoundInfo(Assets, ID);
+  switch(Info->Chain)
+  {
+    case HHASoundChain_None:
+    {
+      //Nothing to do
+    } break;
+    
+    case HHASoundChain_Loop:
+    {
+      Result = ID;
+    } break;
+    
+    case HHASoundChain_Advance:
+    {
+      Result.Value = ID.Value + 1;
+    } break;
+
+    default:
+    {
+      
+    }
+  }
 
   return Result;
 }

@@ -1105,10 +1105,10 @@ internal void TiledRenderGroupToOutput(platform_work_queue *RenderQueue, render_
       Work->OutputTarget = OutputTarget;
       Work->ClipRect = ClipRect;
 
-      PlatformAddEntry(RenderQueue, DoTiledRenderWork, Work);
+      Platform.AddEntry(RenderQueue, DoTiledRenderWork, Work);
     }
   }
-  PlatformCompleteAllWork(RenderQueue);
+  Platform.CompleteAllWork(RenderQueue);
 }
 
 #if 0

@@ -8,6 +8,7 @@
 #include "handmade_file_formats.h"
 #include "handmade_intrisic.h"
 #include "handmade_math.h"
+#include <memory.h>
 
 #define internal static
 #define Align8(value) ((value + 7) & ~7)
