@@ -4,6 +4,11 @@ The building is done with a simple bat file.
 I'm going to list some of them time by time: 
 <br>
 <br>
+-Some particles effects:
+<br>
+![Demo](https://i.imgur.com/K0vKCKX.gif)
+<br>
+<br>
 -Dynamic ground floors generation in the background theard async:
 <br>
 ![Demo](https://i.imgur.com/KoFlv5J.gif)
