@@ -795,7 +795,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     AddMonster(GameState, CameraTileX + 2, CameraTileY + 2, CameraTileZ);
     AddFamiliar(GameState, CameraTileX - 2, CameraTileY + 2, CameraTileZ);
-
+    GameState->Effects = Seed(7851);
     
     //SetCamera(GameState, NewCameraP); 
     GameState->IsInitialized = true;
@@ -1225,13 +1225,121 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       {
         case EntityType_Hero:
         {
-	        asset_vector MatchVector = {};
-	        MatchVector.E[Tag_Facing_Direction] = Entity->WizFacingDirection;
-	        asset_vector WeightVector = {};
-	        WeightVector.E[Tag_Facing_Direction] = 1.0f;
-	        bitmap_id Wizard = BestMatchBitmap(TranState->Assets, Asset_Wizard, &MatchVector, &WeightVector);
-	        PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
-	        DrawHitpoints(Entity, RenderGroup);
+	  asset_vector MatchVector = {};
+	  MatchVector.E[Tag_Facing_Direction] = Entity->WizFacingDirection;
+	  asset_vector WeightVector = {};
+	  WeightVector.E[Tag_Facing_Direction] = 1.0f;
+	  bitmap_id Wizard = BestMatchBitmap(TranState->Assets, Asset_Wizard, &MatchVector, &WeightVector);
+	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
+	  DrawHitpoints(Entity, RenderGroup);
+
+	  ZeroStruct(GameState->ParticleCels);
+	  real32 GridScale = 0.2f;
+	  v3 GridOrigin = v3{-0.5f*GridScale*PARTICLE_CEL_DIM, 0.0f, 0.0f};
+	  real32 InvGridScale = 1.0f / GridScale;
+	  
+	  for(uint32 ParticleSpawnIndex = 0; ParticleSpawnIndex < 1; ++ParticleSpawnIndex)
+	  {
+	    particle *Particle = GameState->Particles + GameState->NextParticle++;
+	    if(GameState->NextParticle >= ArrayCount(GameState->Particles))
+	    {
+	      GameState->NextParticle = 0; 
+	    }
+
+	    Particle->P = v3{RandomBetween(&GameState->Effects, -0.05f, 0.05f), 0, 0};
+	    Particle->dP = v3{RandomBetween(&GameState->Effects, -1.0f, 1.0f), 7.0f*RandomBetween(&GameState->Effects, 0.5f, 1.2f), 0};
+	    Particle->ddP = v3{0.0f, -9.8f, 0.0f};
+	    Particle->Color = v4{1, 1, 1, 1.0f};
+	    Particle->dColor = v4{0, 0, 0, -0.2f};
+	  }
+
+	  for(uint32 ParticleIndex = 0; ParticleIndex < ArrayCount(GameState->Particles); ++ParticleIndex)
+	  {
+	    particle *Particle = GameState->Particles + ParticleIndex;
+
+	    v3 P = InvGridScale*(Particle->P - GridOrigin);
+	    int32 X = TruncateReal32ToInt32(P.x);
+	    int32 Y = TruncateReal32ToInt32(P.y);
+
+	    if(X < 0) {X = 0;}
+	    if(X > PARTICLE_CEL_DIM - 1) {X = PARTICLE_CEL_DIM - 1;}
+	    if(Y < 0) {Y = 0;}
+	    if(Y > PARTICLE_CEL_DIM - 1) {Y = PARTICLE_CEL_DIM - 1;}
+	    
+	    particle_cel *Cel = &GameState->ParticleCels[X][Y];
+
+	    real32 Density = Particle->Color.a;
+	    Cel->Density += Density;
+	    Cel->VelocityTimesDensity = Density*Particle->dP;
+	  }
+
+	  for(uint32 Y = 0; Y < PARTICLE_CEL_DIM; ++Y)
+	  {
+	    for(uint32 X = 0; X < PARTICLE_CEL_DIM; ++X)
+	     {
+	       particle_cel *Cel = &GameState->ParticleCels[X][Y];
+	       real32 Alpha = Clamp01(Cel->Density);
+	       PushRect(RenderGroup, GridScale*v3{(real32)X, (real32)Y, 0} + GridOrigin, GridScale*v2{1.0, 1.0f}, v4{Alpha, Alpha, Alpha, 1.0f});
+	     }
+	  }
+
+	  
+	  for(uint32 ParticleIndex = 0; ParticleIndex < ArrayCount(GameState->Particles); ++ParticleIndex)
+	  {
+	    particle *Particle = GameState->Particles + ParticleIndex;
+
+	    v3 P = InvGridScale*(Particle->P - GridOrigin);
+
+	    int32 X = TruncateReal32ToInt32(P.x);
+	    int32 Y = TruncateReal32ToInt32(P.y);
+
+	    if(X < 0) {X = 0;}
+	    if(X > PARTICLE_CEL_DIM - 2) {X = PARTICLE_CEL_DIM - 2;}
+	    if(Y < 0) {Y = 0;}
+	    if(Y > PARTICLE_CEL_DIM - 2) {Y = PARTICLE_CEL_DIM - 2;}
+	    
+	    particle_cel *CelCenter = &GameState->ParticleCels[X][Y];
+	    particle_cel *CelLeft = &GameState->ParticleCels[X - 1][Y];
+	    particle_cel *CelRigth = &GameState->ParticleCels[X + 1][Y];
+	    particle_cel *CelUp = &GameState->ParticleCels[X][Y + 1];
+	    particle_cel *CelDown = &GameState->ParticleCels[X][Y - 1];
+
+	    v3 Dispersion = {};
+	    real32 Dc = 1.0f;
+	    Dispersion += Dc*(CelCenter->Density - CelLeft->Density)*v3{-1.0f, 0.0f, 0.0f};
+	    Dispersion += Dc*(CelCenter->Density - CelRigth->Density)*v3{1.0f, 0.0f, 0.0f};
+	    Dispersion += Dc*(CelCenter->Density - CelUp->Density)*v3{0.0f, 1.0f, 0.0f};
+	    Dispersion += Dc*(CelCenter->Density - CelLeft->Density)*v3{0.0f, -1.0f, 0.0f};
+
+	    v3 dDP = Particle->ddP + Dispersion;
+	    Particle->P += (0.5f*Square(dtForFrame)*Input->dtForFrame*dDP + Input->dtForFrame*Particle->dP);
+	    Particle->dP += Input->dtForFrame*dDP;
+	    Particle->Color += Input->dtForFrame*Particle->dColor;
+
+	    if(Particle->P.y < 0.0f)
+	    {
+	      real32 CoefficientOfRestitution = 0.3f;
+	      Particle->P.y = -Particle->P.y;
+	      Particle->dP.y = CoefficientOfRestitution*Particle->dP.y;
+	    }
+
+
+	    
+	    v4 Color;
+	    Color.r = Clamp01(Particle->Color.r);
+	    Color.g = Clamp01(Particle->Color.g);
+	    Color.b = Clamp01(Particle->Color.b);
+	    Color.a = Clamp01(Particle->Color.a);
+
+	    if(Color.a > 0.9f)
+	    {
+	      Color.a = 0.9f*Clamp01MapToRange(1.0f, Color.a, 0.9f);
+	    }
+
+	    PushBitmap(RenderGroup, GetFirstBitmap(TranState->Assets, Asset_Sword), Particle->P, 0.5f, Color);
+
+	  }
+	  
         } break;
 	
         case EntityType_Wall:

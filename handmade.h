@@ -62,6 +62,7 @@ typedef double real64;
 #include "handmade_render_group.h"
 #include "handmade_file_formats.h"
 
+
 struct memory_arena
 {
   memory_index Size;
@@ -327,6 +328,23 @@ struct ground_buffer
   loaded_bitmap Bitmap;
 };
 
+struct particle
+{
+  v3 P;
+  v3 dP;
+  v3 ddP;
+  v4 Color;
+  v4 dColor;
+};
+
+#include "handmade_random.h"
+
+struct particle_cel
+{
+  real32 Density;
+  v3 VelocityTimesDensity;
+};
+
 struct game_state
 {
   bool32 IsInitialized;
@@ -367,6 +385,14 @@ struct game_state
   audio_state AudioState;
   playing_sound *PlayingAudio;
 
+  particle Particles[64];
+  uint32 NextParticle;
+
+#define PARTICLE_CEL_DIM 16
+  particle_cel ParticleCels[PARTICLE_CEL_DIM][PARTICLE_CEL_DIM];
+  
+  random_series Effects;
+  
   real32 Time;
 };
 
@@ -530,6 +556,8 @@ global_variable platform_add_entry *PlatformAddEntry;
 global_variable platform_complete_all_work *PlatformCompleteAllWork;
 global_variable debug_platform_read_entire_file *DEBUGReadEntireFile;
 */
+
+
 
 #define HANDMADE_H
 #endif
