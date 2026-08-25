@@ -117,6 +117,13 @@ typedef PLATFORM_READ_DATA_FROM_FILE(platform_read_data_from_file);
 #define PLATFORM_FILE_ERROR(name) void name(platform_file_handle *Handle, char *Message)
 typedef PLATFORM_FILE_ERROR(platform_file_error);
 
+#define PLATFORM_ALLOCATE_MEMORY(name) void *name(memory_index Size)
+typedef PLATFORM_ALLOCATE_MEMORY(platform_allocate_memory);
+
+#define PLATFORM_DEALLOCATE_MEMORY(name) void name(void *Memory)
+typedef PLATFORM_DEALLOCATE_MEMORY(platform_deallocate_memory);
+
+
 #define PlatformNoFileErrors(Handle) ((Handle)->NoErrors)
 
 struct platform_work_queue;
@@ -145,6 +152,9 @@ struct platform_api
   platform_open_next_file *OpenNextFile;
   platform_read_data_from_file *ReadDataFromFile;
   platform_file_error *FileError;
+
+  platform_allocate_memory *AllocateMemory;
+  platform_deallocate_memory *DeallocateMemory;
  
   debug_platform_free_file_memory *DEBUGFreeFileMemory;
   debug_platform_read_entire_file *DEBUGReadEntireFile;
@@ -204,10 +214,26 @@ extern struct game_memory *DebugGlobalMemory = 0;
 #define Gigabytes(value) (Megabytes(value)*1024LL)
 #define Terabytes(value) (Gigabytes(value)*1024LL)
 
-inline uint32 SafeTruncateUInt64 (uint64 Value)
+inline uint32 SafeTruncateUInt64(uint64 Value)
 {
   Assert(Value <= 0xFFFFFFFF);
   uint32 Result = (uint32)Value;
+  return Result;
+}
+
+inline uint16 SafeTruncateUInt16(int32 Value)
+{
+  Assert(Value <= 65535);
+  Assert(Value >= 0);
+  uint16 Result = (uint16)Value;
+  return Result;
+}
+
+inline uint16 SafeTruncateInt16(int32 Value)
+{
+  Assert(Value < 32767);
+  Assert(Value >= -32768);
+  uint16 Result = (int16)Value;
   return Result;
 }
 

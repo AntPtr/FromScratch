@@ -380,7 +380,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
   {
     fill_ground_chunk_work *Work = PushStruct(&Task->Arena, fill_ground_chunk_work);
     loaded_bitmap *Buffer = &GroundBuffer->Bitmap;
-    render_group *RenderGroup = AllocateRenderGroup(TranState->Assets, &Task->Arena, 0);
+    render_group *RenderGroup = AllocateRenderGroup(TranState->Assets, &Task->Arena, 0, true);
     real32 Width = (real32)GameState->World->ChunkDimInMeters.x;
     real32 Height = (real32)GameState->World->ChunkDimInMeters.y;
 #if 1
@@ -542,9 +542,9 @@ internal void MakeSphereDiffuseMap(loaded_bitmap *Bitmap)
 internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 Height, bool32 ClearToZero = true)
 {
   loaded_bitmap Result;
-  Result.Width = Width;
-  Result.Height = Height;
-  Result.Pitch = Result.Width*BITMAP_BYTES_PER_PIXEL;
+  Result.Width = SafeTruncateUInt16(Width);
+  Result.Height = SafeTruncateUInt16(Height);
+  Result.Pitch = SafeTruncateUInt16(Result.Width*BITMAP_BYTES_PER_PIXEL);
   int32 TotalBitmapSize = Width*Height*BITMAP_BYTES_PER_PIXEL;
   Result.Memory = PushSize(Arena, TotalBitmapSize, 16);
   if(ClearToZero)
@@ -956,12 +956,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   loaded_bitmap DrawBuffer_ = {};
   loaded_bitmap* DrawBuffer = &DrawBuffer_;
-  DrawBuffer->Width = Buffer->Width;
-  DrawBuffer->Height = Buffer->Height;
-  DrawBuffer->Pitch = Buffer->Pitch;
+  DrawBuffer->Width = SafeTruncateUInt16(Buffer->Width);
+  DrawBuffer->Height = SafeTruncateUInt16(Buffer->Height);
+  DrawBuffer->Pitch = SafeTruncateUInt16(Buffer->Pitch);
   DrawBuffer->Memory = Buffer->Memory;
 
-  render_group *RenderGroup = AllocateRenderGroup(TranState->Assets, &TranState->TranArena, Megabytes(4));
+  render_group *RenderGroup = AllocateRenderGroup(TranState->Assets, &TranState->TranArena, Megabytes(4), false);
   
   real32 WidthOfMonitor =  0.635f;
   real32 MetersToPixels = (real32)DrawBuffer->Width*WidthOfMonitor;
@@ -1272,7 +1272,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    Cel->Density += Density;
 	    Cel->VelocityTimesDensity = Density*Particle->dP;
 	  }
-
+#if 0
 	  for(uint32 Y = 0; Y < PARTICLE_CEL_DIM; ++Y)
 	  {
 	    for(uint32 X = 0; X < PARTICLE_CEL_DIM; ++X)
@@ -1282,7 +1282,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	       PushRect(RenderGroup, GridScale*v3{(real32)X, (real32)Y, 0} + GridOrigin, GridScale*v2{1.0, 1.0f}, v4{Alpha, Alpha, Alpha, 1.0f});
 	     }
 	  }
-
+#endif
 	  
 	  for(uint32 ParticleIndex = 0; ParticleIndex < ArrayCount(GameState->Particles); ++ParticleIndex)
 	  {
@@ -1472,6 +1472,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   EndTemporaryMemory(SimMemory);
   EndTemporaryMemory(RenderMemory);
 
+  EvictAssetsAsNecessary(TranState->Assets);
+  
   CheckArena(&GameState->WorldArena);
   CheckArena(&TranState->TranArena);
   END_TIMED_BLOCK(GameUpdateAndRender);

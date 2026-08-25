@@ -5,10 +5,10 @@ struct loaded_bitmap
 {
   v2 AlignPercentage;
   real32 WidthOverHeight;
-  int32 Width;
-  int32 Height;
+  int16 Width;
+  int16 Height;
+  int16 Pitch;
   void *Memory;
-  int32 Pitch;
 };
 
 struct loaded_sound
@@ -102,6 +102,8 @@ struct render_group
   uint8 *PushBufferBase;
 
   uint32 MissingBitmapCounts;
+
+  bool32 AssetShouldBeLocked;
 };
 
 #define HANDMADE_RENDER_GROUP_H

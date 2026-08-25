@@ -25,7 +25,9 @@ enum asset_state
   AssetState_Unloaded,
   AssetState_Queued,
   AssetState_Loaded,
-  AssetState_Locked,
+  AssetState_Lock = 0x10000,
+  AssetState_StateMask = 0xFFF,
+  AssetState_TypeMask = 0xF000,
 };
 
 struct wizard
@@ -40,16 +42,6 @@ enum asset_tag_id
   Tag_Facing_Direction, //Angle in radians
 
   Tag_Count,
-};
-
-struct asset_slot
-{
-  asset_state State;
-  union
-  {
-    loaded_bitmap *Bitmap;
-    loaded_sound *Sound;
-  };
 };
 
 struct asset_vector
@@ -77,7 +69,6 @@ struct asset_sound_info
   sound_id NextIDToPlay;
 };
 
-
 struct asset_group
 {
   uint32 FirstTagIndex;
@@ -98,16 +89,39 @@ struct asset_file
   uint32 TagBase;
 };
 
+struct asset_memory_header
+{
+  asset_memory_header *Next;
+  asset_memory_header *Prev;
+
+  uint32 AssetIndex;
+  uint32 TotalSize;
+  union
+  {
+    loaded_bitmap Bitmap;
+    loaded_sound Sound;
+  };  
+};
+
 struct asset
 {
+  uint32 State;
+  asset_memory_header *Header;
+  
   hha_asset HHA;
   uint32 FileIndex;
 };
+
+
 
 struct game_assets
 {
   memory_arena Arena;
   struct transient_state *TranState;
+
+  uint64 TargetMemoryUsed;
+  uint64 TotalMemoryUsed;
+  asset_memory_header LoadedAssetSentinel;
   
   asset_type AssetTypes[Asset_Count];
 
@@ -122,7 +136,6 @@ struct game_assets
   uint32 TagCounts;
   hha_tag *Tags;
   
-  asset_slot *Slots;
   //wizard Wizard;
 #if 0
   uint8 *HHAContents;
@@ -134,26 +147,48 @@ struct game_assets
 #endif  
 };
 
-inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID)
+inline bool32 IsLocked(asset *Asset)
 {
-  asset_slot *Slot = Assets->Slots + ID.Value;
+  bool32 Result = (Asset->State & AssetState_Lock);
+  return Result;
+}
+
+inline uint32 GetType(asset *Asset)
+{
+  uint32 Result = Asset->State & AssetState_TypeMask;
+  return Result;
+}
+
+inline uint32 GetState(asset *Asset)
+{
+  uint32 Result = Asset->State & AssetState_StateMask;
+  return Result;
+}
+
+void MoveHeaderToFront(game_assets *Assets, asset *Asset);
+
+inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID, bool32 MustBeLocked)
+{
+  asset *Asset = Assets->Assets + ID.Value;
   loaded_bitmap *Result = 0;
-  if(Slot->State >= AssetState_Loaded)
+  if(GetState(Asset) >= AssetState_Loaded && (!MustBeLocked || IsLocked(Asset)))
   {
     CompletePreviousReadsBeforeFutureReads;
-    Result = Slot->Bitmap;
+    Result = &Asset->Header->Bitmap;
+    MoveHeaderToFront(Assets, Asset);
   }
   return Result;
 }
 
 inline loaded_sound* GetSound(game_assets* Assets, sound_id ID)
 {
-  asset_slot *Slot = Assets->Slots + ID.Value;
+  asset *Asset = Assets->Assets + ID.Value;
   loaded_sound *Result = 0;
-  if(Slot->State >= AssetState_Loaded)
+  if(GetState(Asset) >= AssetState_Loaded)
   {
     CompletePreviousReadsBeforeFutureReads;
-    Result = Slot->Sound;
+    Result = &Asset->Header->Sound;
+    MoveHeaderToFront(Assets, Asset);
   }
   return Result;
 }
@@ -165,6 +200,7 @@ inline hha_sound* GetSoundInfo(game_assets* Assets, sound_id ID)
 
   return Info;
 }
+
 
 inline bool32 IsValid(bitmap_id ID)
 {
@@ -211,7 +247,7 @@ inline sound_id  GetNextSoundInChain(game_assets *Assets, sound_id ID)
 }
 
 internal void LoadSound(game_assets *Assets, sound_id ID);
-internal void LoadBitmap(game_assets *Assets, bitmap_id ID);
+internal void LoadBitmap(game_assets *Assets, bitmap_id ID, bool32 Locked);
 internal task_with_memory *BeginTaskWithMemory(transient_state *TranState);
 internal void EndTaskWithMemory(task_with_memory *Task);
 

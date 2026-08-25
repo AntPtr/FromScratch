@@ -229,14 +229,14 @@ inline void PushBitmap(render_group *Group, loaded_bitmap *Bitmap, v3 Offset, re
 
 inline void PushBitmap(render_group *Group, bitmap_id ID, v3 Offset, real32 Height, v4 Color = v4{1, 1, 1, 1})
 {
-  loaded_bitmap *Bitmap = GetBitmap(Group->Assets, ID);
+  loaded_bitmap *Bitmap = GetBitmap(Group->Assets, ID, Group->AssetShouldBeLocked);
   if(Bitmap)
   {
     PushBitmap(Group, Bitmap, Offset, Height, Color);
   }
   else
   {
-    LoadBitmap(Group->Assets, ID);
+    LoadBitmap(Group->Assets, ID, Group->AssetShouldBeLocked);
     ++Group->MissingBitmapCounts;
   }
 }
@@ -907,7 +907,7 @@ internal void DrawBitmap(loaded_bitmap *Buffer, loaded_bitmap *Bitmap, real32 re
   }
 }
 
-internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Arena, uint32 MaxPushBufferSize)
+internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Arena, uint32 MaxPushBufferSize, bool32 AssetShouldBeLocked)
 {
   render_group *Result = PushStruct(Arena, render_group);
   if(MaxPushBufferSize == 0)
@@ -925,6 +925,8 @@ internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Ar
   Result->Transform.Scale = 1.0f;
 
   Result->MissingBitmapCounts = 0;
+
+  Result->AssetShouldBeLocked = AssetShouldBeLocked;
   return Result;
 }
 

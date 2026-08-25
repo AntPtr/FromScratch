@@ -294,6 +294,7 @@ DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
     VirtualFree(Memory, 0, MEM_RELEASE);
   }
 }
+
 DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
 {
   debug_read_file_result Result = {};
@@ -332,6 +333,7 @@ DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
   }
   return Result;
 }
+
 DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)
 {
   bool32 Result = false;
@@ -806,6 +808,21 @@ internal void  Win32DebugSyncDisplay(win32_offscreen_buffer *Backbuffer, int Mar
 #endif
 
 
+PLATFORM_ALLOCATE_MEMORY(Win32AllocateMemory)
+{
+  void *Result = VirtualAlloc(0, Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+
+  return Result;
+}
+
+PLATFORM_DEALLOCATE_MEMORY(Win32DeallocateMemory)
+{
+  if(Memory)
+  {
+    VirtualFree(Memory, 0, MEM_RELEASE);
+  }
+}
+
 
 LRESULT MainWindowCallback(
   HWND    Windows,
@@ -1243,7 +1260,10 @@ int WINAPI wWinMain(HINSTANCE Instance,
       GameMemory.PlatformAPI.OpenNextFile = Win32OpenNextFile;
       GameMemory.PlatformAPI.ReadDataFromFile = Win32ReadDataFromFile;
       GameMemory.PlatformAPI.FileError = Win32FileError;
+      GameMemory.PlatformAPI.AllocateMemory = Win32AllocateMemory;
+      GameMemory.PlatformAPI.DeallocateMemory = Win32DeallocateMemory;
 
+      
       for(int ReplayIndex = 0; ReplayIndex < ArrayCount(Win32State.ReplayBuffers); ++ReplayIndex)
       {
 	win32_replay_buffer *ReplayBuffer = &Win32State.ReplayBuffers[ReplayIndex];
