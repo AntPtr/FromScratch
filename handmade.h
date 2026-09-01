@@ -89,11 +89,13 @@ struct task_with_memory
 typedef struct platform_file_handle
 {
   bool32 NoErrors;
+  void *Platform;
 } platform_file_handle;
 
 typedef struct platform_file_group
 {
   uint32 FileCount;
+  void *Platform;
 } platform_file_group;
 
 struct debug_read_file_result
@@ -102,13 +104,19 @@ struct debug_read_file_result
   void* Contents;
 };
 
-#define PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(name) platform_file_group *name(char *Type)
+typedef enum platform_file_type
+{
+  PlatformFileType_AssetFile,
+  PlatformFileType_SavedFile,
+} platform_file_type;
+
+#define PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(name) platform_file_group name(platform_file_type Type)
 typedef PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(platform_get_all_file_of_type_begin);
 
 #define PLATFORM_GET_ALL_FILE_OF_TYPE_END(name) void name(platform_file_group *FileGroup)
 typedef PLATFORM_GET_ALL_FILE_OF_TYPE_END(platform_get_all_file_of_type_end);
 
-#define PLATFORM_OPEN_FILE(name) platform_file_handle *name(platform_file_group *FileGroup)
+#define PLATFORM_OPEN_FILE(name) platform_file_handle name(platform_file_group *FileGroup)
 typedef PLATFORM_OPEN_FILE(platform_open_next_file);
 
 #define PLATFORM_READ_DATA_FROM_FILE(name) void name(platform_file_handle *Source, uint64 Offset, uint64 Size, void *Dest)

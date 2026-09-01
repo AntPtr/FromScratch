@@ -83,7 +83,7 @@ struct asset_type
 
 struct asset_file
 {
-  platform_file_handle *Handle;
+  platform_file_handle Handle;
   hha_header Header;
   hha_asset_type *AssetTypeArray;
   uint32 TagBase;
@@ -112,15 +112,24 @@ struct asset
   uint32 FileIndex;
 };
 
+enum asset_memory_block_flags
+{
+  AssetMemory_Used = 0x1,
+};
 
+struct asset_memory_block
+{
+  asset_memory_block *Next;
+  asset_memory_block *Prev;
+  uint64 Flag;
+  memory_index Size;
+};
 
 struct game_assets
 {
-  memory_arena Arena;
   struct transient_state *TranState;
+  asset_memory_block MemorySentinel;
 
-  uint64 TargetMemoryUsed;
-  uint64 TotalMemoryUsed;
   asset_memory_header LoadedAssetSentinel;
   
   asset_type AssetTypes[Asset_Count];

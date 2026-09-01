@@ -972,29 +972,45 @@ internal void Win32CompleteAllWork(platform_work_queue *Queue)
 
 struct win32_platform_file_handle
 {
-  platform_file_handle H;
   HANDLE Win32Handle;
 };
 
 struct win32_platform_file_group
 {
-  platform_file_group H;
   HANDLE FindHandle;
   WIN32_FIND_DATAA FindData;
 };
 
 internal PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(Win32GetAllFilesOfTypeBegin)
 {
+  platform_file_group Result = {};
   win32_platform_file_group *Win32FileGroup =(win32_platform_file_group *)VirtualAlloc(0, sizeof(win32_platform_file_group), MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-  Win32FileGroup->H.FileCount = 0;
+  Result.FileCount = 0;
+
+  Result.Platform = Win32FileGroup;
 
   WIN32_FIND_DATAA FindData;
-  char *WildCard = "*.hha";
+  char *WildCard = "*.";
+  switch(Type)
+  {
+    case PlatformFileType_AssetFile:
+    {
+      WildCard = "*.hha";
+    } break;
+    case PlatformFileType_SavedFile:
+    {
+      WildCard = "*.hhs";
+    } break;
+    default:
+    {
+      InvalidCodePath;
+    }
+  }
   HANDLE FindHandle = FindFirstFileA(WildCard, &FindData);
   while(FindHandle != INVALID_HANDLE_VALUE)
   {
     //Process the file
-    ++Win32FileGroup->H.FileCount;
+    ++Result.FileCount;
     
     if(!FindNextFileA(FindHandle, &FindData))
     {
@@ -1009,12 +1025,12 @@ internal PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(Win32GetAllFilesOfTypeBegin)
 
   Win32FileGroup->FindHandle = FindFirstFileA(WildCard, &Win32FileGroup->FindData);
   
-  return (platform_file_group *)Win32FileGroup;
+  return Result;
 }
 
 internal PLATFORM_GET_ALL_FILE_OF_TYPE_END(Win32GetAllFilesOfTypeEnd)
 {
-  win32_platform_file_group *Win32FileGroup = (win32_platform_file_group *)(FileGroup);
+  win32_platform_file_group *Win32FileGroup = (win32_platform_file_group *)(FileGroup->Platform);
   if(Win32FileGroup)
   {
     if(Win32FileGroup->FindHandle != INVALID_HANDLE_VALUE)
@@ -1028,19 +1044,21 @@ internal PLATFORM_GET_ALL_FILE_OF_TYPE_END(Win32GetAllFilesOfTypeEnd)
 
 internal PLATFORM_OPEN_FILE(Win32OpenNextFile)
 {
-  win32_platform_file_group *Win32FileGroup = (win32_platform_file_group *)(FileGroup);
+  win32_platform_file_group *Win32FileGroup = (win32_platform_file_group *)(FileGroup->Platform);
 
-  win32_platform_file_handle *Result = Result = 0;
+  platform_file_handle Result = {};
   
   if(Win32FileGroup->FindHandle != INVALID_HANDLE_VALUE)
   {
     
-    Result = (win32_platform_file_handle *)VirtualAlloc(0, sizeof(win32_platform_file_handle), MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-    if(Result)
+   win32_platform_file_handle *Win32Handle = (win32_platform_file_handle *)VirtualAlloc(0, sizeof(win32_platform_file_handle), MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    Result.Platform = Win32Handle;
+    
+    if(Win32Handle)
     {
       char *Filename = Win32FileGroup->FindData.cFileName;
-      Result->Win32Handle = CreateFileA(Filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-      Result->H.NoErrors = (Result->Win32Handle != INVALID_HANDLE_VALUE);
+      Win32Handle->Win32Handle = CreateFileA(Filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+      Result.NoErrors = (Win32Handle->Win32Handle != INVALID_HANDLE_VALUE);
     }
 
     if(!FindNextFileA(Win32FileGroup->FindHandle, &Win32FileGroup->FindData))
@@ -1050,7 +1068,7 @@ internal PLATFORM_OPEN_FILE(Win32OpenNextFile)
     }
   }
   
-  return ((platform_file_handle *)Result);
+  return (Result);
 }
 
 internal PLATFORM_FILE_ERROR(Win32FileError)
@@ -1062,7 +1080,7 @@ internal PLATFORM_READ_DATA_FROM_FILE(Win32ReadDataFromFile)
 {
   if(PlatformNoFileErrors(Source))
   {
-    win32_platform_file_handle *Handle = (win32_platform_file_handle *)Source;
+    win32_platform_file_handle *Handle = (win32_platform_file_handle *)Source->Platform;
     OVERLAPPED Overlapped = {};
     Overlapped.Offset = (uint32)((Offset >> 0 & 0xFFFFFFFF));
     Overlapped.OffsetHigh = (uint32)((Offset >> 32 & 0xFFFFFFFF));
@@ -1074,7 +1092,7 @@ internal PLATFORM_READ_DATA_FROM_FILE(Win32ReadDataFromFile)
     }
     else
     {
-      Win32FileError(&Handle->H, "Read file failed");
+      Win32FileError(Source, "Read file failed");
     }
   }
 }

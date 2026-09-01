@@ -1472,8 +1472,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   EndTemporaryMemory(SimMemory);
   EndTemporaryMemory(RenderMemory);
 
-  EvictAssetsAsNecessary(TranState->Assets);
-  
   CheckArena(&GameState->WorldArena);
   CheckArena(&TranState->TranArena);
   END_TIMED_BLOCK(GameUpdateAndRender);
