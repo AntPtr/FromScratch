@@ -1,4 +1,14 @@
 #include "handmade_test_asset_builder.h"
+
+#define USE_FONT_FROM_WINDOWS 1
+
+#if USE_FONT_FROM_WINDOWS
+#include <windows.h>
+#else
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+#endif
+
 struct loaded_bitmap
 {
   int32 Width;
@@ -396,6 +406,153 @@ internal loaded_sound LoadWAV(char* FileName, uint32 SectionSampleIndex, uint32 
   return Result;
 }
 
+internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 CodePoint)
+{
+  loaded_bitmap Result = {};
+ 
+#if USE_FONT_FROM_WINDOWS
+  static HDC DeviceContext = 0;
+  if(!DeviceContext)
+  {
+    AddFontResourceExA(FileName, FR_PRIVATE, 0);
+    int Height = 128;
+    HFONT Font = CreateFontA(Height, 0, 0, 0, FW_DONTCARE,
+			     FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+			     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+			     DEFAULT_PITCH|FW_DONTCARE, FontName);
+
+    DeviceContext = CreateCompatibleDC(0);
+    HBITMAP Bitmap = CreateCompatibleBitmap(DeviceContext, 1024, 1024);
+    SelectObject(DeviceContext, Bitmap);
+    SelectObject(DeviceContext, Font);
+    SetBkColor(DeviceContext, RGB(0, 0 ,0));
+
+    TEXTMETRIC TextMetric;
+    GetTextMetrics(DeviceContext, &TextMetric);
+  }
+
+  wchar_t CheesePoint = (wchar_t)CodePoint;
+  SIZE Size;
+  GetTextExtentPoint32W(DeviceContext, &CheesePoint, 1, &Size); 
+
+  int Width = Size.cx;
+  int Height = Size.cy;
+
+  SetBkMode(DeviceContext, OPAQUE);
+  SetBkColor(DeviceContext, RGB(0, 0, 0));
+  SetTextColor(DeviceContext, RGB(255, 255, 255));
+  PatBlt(DeviceContext, 0, 0, 1024, 1024, BLACKNESS);
+  TextOutW(DeviceContext, 0, 0, &CheesePoint, 1);
+
+  int MinX = 10000;
+  int MinY = 10000;
+  int MaxX = -10000;
+  int MaxY = -10000;
+
+  for(int Y = 0; Y < Height; ++Y)
+  {
+    for(int X = 0; X < Width; ++X)
+    {
+      COLORREF Pixel = GetPixel(DeviceContext, X, Y);
+      if(Pixel != 0)
+      {
+	if(MinX > X)
+	{
+	  MinX = X;
+	}
+      
+	if(MinY > Y)
+        {
+	  MinY = Y;
+	}
+
+	if(MaxX < X)
+        {
+	  MaxX = X;
+	}
+
+	if(MaxY < Y)
+        {
+	  MaxY = Y;
+	}
+      }
+    }
+  }
+  
+  if(MinX <= MaxX)
+  {
+    --MinX;
+    --MinY;
+    ++MaxX;
+    ++MaxY;
+    
+    Width = (MaxX - MinX) + 1;
+    Height = (MaxY - MinY) + 1;
+
+    Result.Pitch = Width*BITMAP_BYTES_PER_PIXEL;
+    Result.Width = Width;
+    Result.Height = Height;
+    Result.Memory = malloc(Result.Height*Result.Pitch);
+    Result.Free = Result.Memory;
+
+    uint8 *DestRow = (uint8 *)Result.Memory + (Height - 1)*Result.Pitch;
+  
+    for(int Y = MinY; Y < MaxY; ++Y)
+    {
+      uint32 *Dest = (uint32 *)DestRow;
+      for(int X = MinX; X < MaxX; ++X)
+      {
+	COLORREF Pixel = GetPixel(DeviceContext, X, Y);
+        uint8 Alpha = uint8(Pixel & 0xFF);
+	*Dest++ = ((Alpha << 24)|
+		   (Alpha << 16)|
+		   (Alpha << 8)|
+		   (Alpha << 0));
+      }
+      DestRow -= Result.Pitch; 
+    }
+     
+  }
+  
+#else
+  entire_file TTFFile = ReadEntireFile(FileName);
+     
+  stbtt_fontinfo Font;
+  stbtt_InitFont(&Font, (uint8 *)(TTFFile.Contents), stbtt_GetFontOffsetForIndex((uint8 *)(TTFFile.Contents), 0));
+
+  int Width, Height, XOffset, YOffset;
+  uint8 *MonoBitmap = stbtt_GetCodepointBitmap(&Font, 0,stbtt_ScaleForPixelHeight(&Font, 120.0f), CodePoint, &Width, &Height, &XOffset, &YOffset);
+
+  Result.Pitch = Width*BITMAP_BYTES_PER_PIXEL;
+  Result.Width = Width;
+  Result.Height = Height;
+  Result.Memory = malloc(Result.Height*Result.Pitch);
+  Result.Free = Result.Memory;
+
+  
+  uint8 *Source = MonoBitmap;
+  uint8 *DestRow = (uint8 *)Result.Memory + (Height - 1)*Result.Pitch;
+  
+  for(int Y = 0; Y < Height; ++Y)
+  {
+    uint32 *Dest = (uint32 *)DestRow;
+    for(int X = 0; X < Width; ++X)
+    {
+      uint8 Alpha = *Source++;
+      *Dest++ = ((Alpha << 24)|
+		 (Alpha << 16)|
+		 (Alpha << 8)|
+		 (Alpha << 0));
+    }
+    DestRow -= Result.Pitch; 
+  }
+  stbtt_FreeBitmap(MonoBitmap, 0);
+  free(TTFFile.Contents);
+#endif  
+  return Result;    
+}
+
+
 internal void WriteHHA(game_assets *Assets, char *Filename)
 {
   FILE *Out = fopen(Filename, "wb");
@@ -438,6 +595,18 @@ internal void WriteHHA(game_assets *Assets, char *Filename)
 	}
 	free(WAV.Free);
       }
+      else if(Source->Type == AssetType_Font)
+      {
+	loaded_bitmap Bitmap = LoadGlyphBitmap(Source->FileName, Source->FontName, Source->CodePoint);
+	Dest->Bitmap.Dim[0] = Bitmap.Width;
+	Dest->Bitmap.Dim[1] = Bitmap.Height;
+
+	Assert((Bitmap.Width*4) == Bitmap.Pitch);
+	fwrite(Bitmap.Memory, Bitmap.Width*Bitmap.Height*4, 1, Out);
+	
+	free(Bitmap.Free);
+
+      }
       else
       {
 	Assert(Source->Type == AssetType_Bitmap);
@@ -461,6 +630,25 @@ internal void WriteHHA(game_assets *Assets, char *Filename)
   } 
 }
 
+
+internal bitmap_id AddCharcterAsset(game_assets *Assets, char *FileName, char *FontName, uint32 CodePoint, real32 AlignPercentageX = 0.5f, real32 AlignPercentageY = 0.5f)
+{    
+  Assert(Assets->DEBUGAssetType);
+  bitmap_id Result = {Assets->DEBUGAssetType->OnePastLastAssetIndex++};
+  asset_source *Source = Assets->AssetsSources + Result.Value;
+  hha_asset *HHA = Assets->Assets + Result.Value;
+  HHA->FirstTagIndex = Assets->TagCount;
+  HHA->OneLastPastTagIndex = HHA->FirstTagIndex;
+  HHA->Bitmap.AlignPercentage[0] = AlignPercentageX;
+  HHA->Bitmap.AlignPercentage[1] = AlignPercentageY;
+  Source->FileName = FileName;
+  Source->Type = AssetType_Font;
+  Source->CodePoint = CodePoint;
+  Source->FontName = FontName;
+  Assets->AssetIndex = Result.Value;
+
+  return Result;
+}
 
 internal void Initialize(game_assets *Assets)
 {
@@ -534,6 +722,14 @@ internal void WriteNonHero()
   AddBitmapAsset(Assets, "test/Hank.bmp");
   EndAssetType(Assets);
 
+  BeginAssetType(Assets, Asset_Fonts);
+  for(uint32 Char = 'A'; Char <= 'Z'; ++Char)
+  {
+    AddCharcterAsset(Assets, "c:/Windows/Fonts/arial.ttf", "Arial", Char);
+    AddTag(Assets, Tag_UTFCodePoint, (real32)Char);
+  }
+  EndAssetType(Assets);
+  
   WriteHHA(Assets, "test2.hha");
 
 }

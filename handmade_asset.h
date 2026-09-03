@@ -1,5 +1,5 @@
 #if !defined(HANDMADE_ASSET_H)
-
+/*
 enum asset_type_id
 {
   Asset_None,
@@ -19,7 +19,7 @@ enum asset_type_id
 
   Asset_Count,
 };
-
+*/
 enum asset_state
 {
   AssetState_Unloaded,
@@ -35,6 +35,7 @@ struct wizard
   bitmap_id Wiz;
 };
 
+/*
 enum asset_tag_id
 {
   Tag_Smoothness,
@@ -43,7 +44,7 @@ enum asset_tag_id
 
   Tag_Count,
 };
-
+*/
 struct asset_vector
 {
   real32 E[Tag_Count];

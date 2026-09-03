@@ -576,7 +576,7 @@ inline real32 SafeRatio0(real32 Numerator, real32 Divisor)
   return Result;
 }
 
-inline real32 SafeRatio1(real32 Numerator, real32 Divisor, real32 N)
+inline real32 SafeRatio1(real32 Numerator, real32 Divisor)
 {
   real32 Result;
   Result = SafeRatioN(Numerator, Divisor, 1.0f);

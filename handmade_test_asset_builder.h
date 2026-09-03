@@ -4,7 +4,6 @@
 #include <math.h>
 #include <stdint.h>
 #include <float.h>
-#include "handmade_asset_type_id.h"
 #include "handmade_file_formats.h"
 #include "handmade_intrisic.h"
 #include "handmade_math.h"
@@ -19,13 +18,19 @@ enum asset_type
 {
   AssetType_Sound,
   AssetType_Bitmap,
+  AssetType_Font,
 };
 
 struct asset_source
 {
   asset_type Type;
-  char* FileName;
-  uint32 FirstSampleIndex;
+  char *FileName;
+  char *FontName;
+  union
+  {
+    uint32 FirstSampleIndex;
+    uint32 CodePoint;
+  };
 };
 
 #define LARGE_NUMBER 4096

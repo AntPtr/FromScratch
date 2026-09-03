@@ -369,6 +369,8 @@ struct particle
   v3 ddP;
   v4 Color;
   v4 dColor;
+
+  bitmap_id BitmapID;
 };
 
 #include "handmade_random.h"

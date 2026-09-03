@@ -542,6 +542,8 @@ internal void MakeSphereDiffuseMap(loaded_bitmap *Bitmap)
 internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 Height, bool32 ClearToZero = true)
 {
   loaded_bitmap Result;
+  Result.AlignPercentage = v2{0.5f, 0.5f};
+  Result.WidthOverHeight = SafeRatio1((real32)(Width), (real32)(Height));
   Result.Width = SafeTruncateUInt16(Width);
   Result.Height = SafeTruncateUInt16(Height);
   Result.Pitch = SafeTruncateUInt16(Result.Width*BITMAP_BYTES_PER_PIXEL);
@@ -553,6 +555,7 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   }
   return Result;
 }
+
 
 /*
 internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName, int32 AlignX, int32 TopDownAlignY)
@@ -636,7 +639,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 								 0.9f*TileDepthInMeters);
     
     GameState->FamiliarCollision = MakeSimpleGroundCollision(GameState, 1.0f, 0.5f, 1.2f);
-          
+    
     uint32 ScreenBaseX = 0;
     uint32 ScreenBaseY = 0;
     uint32 ScreenBaseZ = 0;
@@ -796,7 +799,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     AddMonster(GameState, CameraTileX + 2, CameraTileY + 2, CameraTileZ);
     AddFamiliar(GameState, CameraTileX - 2, CameraTileY + 2, CameraTileZ);
     GameState->Effects = Seed(7851);
-    
+
     //SetCamera(GameState, NewCameraP); 
     GameState->IsInitialized = true;
   }
@@ -828,6 +831,20 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     GameState->PlayingAudio = PlaySound(&GameState->AudioState, GetFirstSound(TranState->Assets, Asset_DungeonSound), false, v2{0.2f, 0.2f});
     //ChangePitch(GameState->PlayingAudio, 0.8f);
+
+    for(uint32 ParticleIndex = 0; ParticleIndex < ArrayCount(GameState->Particles); ++ParticleIndex)
+    {
+      particle *Particle = GameState->Particles + ParticleIndex;
+
+      asset_vector MatchVector1 = {};
+      asset_vector WeightVector1 = {};
+      char Nothings[] = "ROXIE"; 
+	    
+      MatchVector1.E[Tag_UTFCodePoint] = (real32)Nothings[RandomChoice(&GameState->Effects, ArrayCount(Nothings) - 1)];
+      WeightVector1.E[Tag_UTFCodePoint] = 1.0f;
+      Particle->BitmapID = BestMatchBitmap(TranState->Assets, Asset_Fonts, &MatchVector1, &WeightVector1);
+    }
+    //Se
     
     for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
     {
@@ -845,7 +862,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->TestNormal = MakeEmptyBitmap(&TranState->TranArena, GameState->TestDiffuse.Width, GameState->TestDiffuse.Height, 0);
     MakeSphereNormalMap(&GameState->TestNormal, 0.0f);
     MakeSphereDiffuseMap(&GameState->TestDiffuse);
-
 
     TranState->EnvMapWidth = 512;
     TranState->EnvMapHeight = 256;
@@ -1271,6 +1287,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    real32 Density = Particle->Color.a;
 	    Cel->Density += Density;
 	    Cel->VelocityTimesDensity = Density*Particle->dP;
+
 	  }
 #if 0
 	  for(uint32 Y = 0; Y < PARTICLE_CEL_DIM; ++Y)
@@ -1316,6 +1333,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    Particle->dP += Input->dtForFrame*dDP;
 	    Particle->Color += Input->dtForFrame*Particle->dColor;
 
+
 	    if(Particle->P.y < 0.0f)
 	    {
 	      real32 CoefficientOfRestitution = 0.3f;
@@ -1335,8 +1353,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    {
 	      Color.a = 0.9f*Clamp01MapToRange(1.0f, Color.a, 0.9f);
 	    }
-
-	    PushBitmap(RenderGroup, GetFirstBitmap(TranState->Assets, Asset_Sword), Particle->P, 0.5f, Color);
+	    
+	    PushBitmap(RenderGroup, Particle->BitmapID, Particle->P, 0.3f, Color);
 
 	  }
 	  

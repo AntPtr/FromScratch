@@ -16,6 +16,37 @@ typedef int32 bool32;
 typedef float real32;
 typedef double real64;
 
+enum asset_type_id
+{
+  Asset_None,
+  
+  Asset_BackGround,
+  Asset_Wall,
+  Asset_Monster,
+  Asset_Sword,
+  Asset_Staff,
+  Asset_Stair,
+  Asset_Grass,
+  Asset_Dirt,
+  Asset_Wizard,
+  Asset_FireSound,
+  Asset_DungeonSound,
+  Asset_Familiar,
+  Asset_Fonts,
+
+  Asset_Count,
+};
+
+enum asset_tag_id
+{
+  Tag_Smoothness,
+  Tag_Flatness,
+  Tag_Facing_Direction, //Angle in radians
+  Tag_UTFCodePoint,
+  
+  Tag_Count,
+};
+
 #define HHA_CODE(a, b, c, d)(((uint32)(a) << 0)  | ((uint32)(b) << 8) | ((uint32)(c) << 16) | ((uint32)(d) << 24))
 
 #pragma pack(push, 1)
