@@ -486,8 +486,8 @@ internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 Co
     ++MaxX;
     ++MaxY;
     
-    Width = (MaxX - MinX) + 1;
-    Height = (MaxY - MinY) + 1;
+    Width = (MaxX - MinX);
+    Height = (MaxY - MinY);
 
     Result.Pitch = Width*BITMAP_BYTES_PER_PIXEL;
     Result.Width = Width;
@@ -503,11 +503,16 @@ internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 Co
       for(int X = MinX; X < MaxX; ++X)
       {
 	COLORREF Pixel = GetPixel(DeviceContext, X, Y);
-        uint8 Alpha = uint8(Pixel & 0xFF);
+	uint8 Alpha = 0;
+	if(Pixel != CLR_INVALID)
+	{
+	  Alpha = uint8(Pixel & 0xFF);
+	}
 	*Dest++ = ((Alpha << 24)|
 		   (Alpha << 16)|
 		   (Alpha << 8)|
 		   (Alpha << 0));
+
       }
       DestRow -= Result.Pitch; 
     }

@@ -229,14 +229,19 @@ inline void PushBitmap(render_group *Group, loaded_bitmap *Bitmap, v3 Offset, re
 
 inline void PushBitmap(render_group *Group, bitmap_id ID, v3 Offset, real32 Height, v4 Color = v4{1, 1, 1, 1})
 {
-  loaded_bitmap *Bitmap = GetBitmap(Group->Assets, ID, Group->AssetShouldBeLocked);
+  loaded_bitmap *Bitmap = GetBitmap(Group->Assets, ID, Group->GenerationID);
+  if(Group->RendersInBackground && !Bitmap)
+  {
+    LoadBitmap(Group->Assets, ID, true);
+    Bitmap = GetBitmap(Group->Assets, ID, Group->GenerationID);
+  }
   if(Bitmap)
   {
     PushBitmap(Group, Bitmap, Offset, Height, Color);
   }
   else
   {
-    LoadBitmap(Group->Assets, ID, Group->AssetShouldBeLocked);
+    LoadBitmap(Group->Assets, ID, false);
     ++Group->MissingBitmapCounts;
   }
 }
@@ -907,7 +912,7 @@ internal void DrawBitmap(loaded_bitmap *Buffer, loaded_bitmap *Bitmap, real32 re
   }
 }
 
-internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Arena, uint32 MaxPushBufferSize, bool32 AssetShouldBeLocked)
+internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Arena, uint32 MaxPushBufferSize, bool32 RendersInBackground)
 {
   render_group *Result = PushStruct(Arena, render_group);
   if(MaxPushBufferSize == 0)
@@ -916,6 +921,8 @@ internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Ar
   }
   Result->PushBufferBase = (uint8 *)PushSize(Arena, MaxPushBufferSize);
  
+  Result->GenerationID = BeginGenerationID(Assets);
+
   Result->MaxPushBufferSize = MaxPushBufferSize;
   Result->PushBufferSize = 0;
   Result->GlobalAlpha = 1.0f;  
@@ -925,10 +932,18 @@ internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Ar
   Result->Transform.Scale = 1.0f;
 
   Result->MissingBitmapCounts = 0;
+  Result->RendersInBackground = RendersInBackground;
 
-  Result->AssetShouldBeLocked = AssetShouldBeLocked;
   return Result;
 }
+
+internal void FinishRenderGroup(render_group *Group)
+{
+  if(Group)
+  {
+    EndGenerationID(Group->Assets, Group->GenerationID);
+  }
+}  
 
 inline void Perspective(render_group *RenderGroup, int32 PixelWidth, int32 PixelHeight, real32 MetersToPixels, real32 FocalLength, real32 DistanceAboveTarget)
 {

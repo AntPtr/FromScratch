@@ -363,11 +363,13 @@ struct fill_ground_chunk_work
   task_with_memory *Task;
 };
 
+
 internal PLATFORM_WORK_QUEUE_CALLBACK(FillGroundChunkWork)
 {
   fill_ground_chunk_work *Work = (fill_ground_chunk_work *)Data;
 
   RenderGroupToOutput(Work->RenderGroup, Work->Buffer);
+  FinishRenderGroup(Work->RenderGroup);
   
   EndTaskWithMemory(Work->Task);
 }
@@ -432,15 +434,11 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
 	}
       }
     }
-    if(AllResourcesArePresent(RenderGroup))
-    {
-      GroundBuffer->P = *ChunkP;
-      Platform.AddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
-    }
-    else
-    {
-      EndTaskWithMemory(Work->Task);
-    }
+    Assert(AllResourcesArePresent(RenderGroup));
+    
+    GroundBuffer->P = *ChunkP;
+    Platform.AddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
+    
   }
 #endif
 }
@@ -1354,7 +1352,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	      Color.a = 0.9f*Clamp01MapToRange(1.0f, Color.a, 0.9f);
 	    }
 	    
-	    PushBitmap(RenderGroup, Particle->BitmapID, Particle->P, 0.3f, Color);
+	    PushBitmap(RenderGroup, Particle->BitmapID, Particle->P, 0.5f, Color);
 
 	  }
 	  
@@ -1485,6 +1483,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   Entry->Point = v2{X, 0.5f};
 #endif
   TiledRenderGroupToOutput(TranState->HighPriorityQueue, RenderGroup, DrawBuffer);
+  FinishRenderGroup(RenderGroup);
   
   EndSim(SimRegion, GameState);
   EndTemporaryMemory(SimMemory);

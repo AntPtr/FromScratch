@@ -102,8 +102,8 @@ struct render_group
   uint8 *PushBufferBase;
 
   uint32 MissingBitmapCounts;
-
-  bool32 AssetShouldBeLocked;
+  bool32 RendersInBackground;
+  uint32 GenerationID;
 };
 
 #define HANDMADE_RENDER_GROUP_H
