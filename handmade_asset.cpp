@@ -583,6 +583,11 @@ internal void LoadBitmap(game_assets *Assets, bitmap_id ID, bool32 Immediate)
       Assets->Assets[ID.Value].State = AssetState_Unloaded;
     }
   }
+  else if(Immediate)
+  {
+    asset_state volatile *State = (asset_state volatile *)&Asset->State;
+    while(Asset->State == AssetState_Queued) {}
+  }
 }
 
 internal uint32 BestMatchAsset(game_assets* Assets, asset_type_id TypeID, asset_vector *MatchVector, asset_vector *WeightVector)

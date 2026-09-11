@@ -35,7 +35,6 @@ internal void SomeGradient(game_offscreen_buffer *Buffer ,int XOffset,int YOffse
   }
 }
 
-
 internal void RenderPlayer(game_offscreen_buffer *Buffer, int PlayerX, int PlayerY)
 {
   uint32 Color = 0xFFFFFFFF;
@@ -383,6 +382,7 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
     fill_ground_chunk_work *Work = PushStruct(&Task->Arena, fill_ground_chunk_work);
     loaded_bitmap *Buffer = &GroundBuffer->Bitmap;
     render_group *RenderGroup = AllocateRenderGroup(TranState->Assets, &Task->Arena, 0, true);
+    BeginRenderGroup(RenderGroup);
     real32 Width = (real32)GameState->World->ChunkDimInMeters.x;
     real32 Height = (real32)GameState->World->ChunkDimInMeters.y;
 #if 1
@@ -438,7 +438,8 @@ internal void FillGroundChunk(transient_state *TranState, game_state *GameState,
     
     GroundBuffer->P = *ChunkP;
     Platform.AddEntry(TranState->LowPriorityQueue, FillGroundChunkWork, Work);
-    
+    //FinishRenderGroup(RenderGroup);
+    //EndTaskWithMemory(Work->Task);
   }
 #endif
 }
@@ -554,7 +555,77 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   return Result;
 }
 
+global_variable render_group *DEBUGRenderGroup;
+global_variable real32 AtY;
+global_variable real32 LeftEdge;
+global_variable real32 FontScale;
 
+internal void DEBUGReset(uint32 Width, uint32 Height)
+{
+  FontScale = 20.0f;
+  AtY = 0.5f*Height - 0.5f*FontScale;
+  LeftEdge = -0.5f*Width + 0.5f*FontScale; 
+  Orthographic(DEBUGRenderGroup, Width, Height, 1.0f);
+  
+}
+
+internal void DEBUGTextLine(char *String)
+{
+  if(DEBUGRenderGroup)
+  {
+    render_group *RenderGroup = DEBUGRenderGroup;
+    asset_vector MatchVector1 = {};
+    asset_vector WeightVector1 = {};
+    WeightVector1.E[Tag_UTFCodePoint] = 1.0f;
+
+    real32 AtX = LeftEdge;;
+      
+    for(char *At = String; *At; ++At)
+    {
+      if(*At !=  ' ')
+      {
+	MatchVector1.E[Tag_UTFCodePoint] = *At;
+	bitmap_id BitmapID = BestMatchBitmap(RenderGroup->Assets, Asset_Fonts, &MatchVector1, &WeightVector1);
+	PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale, v4{1, 1, 1, 1});
+      }
+      AtX += FontScale;
+    }
+    AtY -= 1.2f*FontScale;
+  }	    
+}
+
+internal void OverlayCycleCounters(game_memory *Memory)
+{
+#if H_INTERNAL
+  //  DEBUGTextLine("DEBUG CYCLE COUNT:\n");
+  DEBUGTextLine("Ciao Roxie");
+
+  char *NameTable[] = {
+    "GameUpdateAndRedner",
+    "RenderGroupToOutput",
+    "DrawRectangleSlowly",
+    "ProcessPixel",
+    "DrawRectangleQuickly",
+  };
+  
+  for(int CounterIndex = 0; CounterIndex < ArrayCount(Memory->Counter); ++CounterIndex)
+  {
+    debug_cycle_counter *Counter = Memory->Counter + CounterIndex;
+    if(Counter->HitCount)
+    {
+#if 0      
+      char TextBuffer[256];
+
+      sprintf_s(TextBuffer, " %d: %I64ucy %uh  %I64ucy/h\n", CounterIndex, Counter->CycleCount, Counter->HitCount, Counter->CycleCount / Counter->HitCount);
+      OutputDebugStringA(TextBuffer);
+      Counter->HitCount = 0;
+      Counter->CycleCount = 0;
+#endif
+      //DEBUGTextLine(NameTable[CounterIndex]);
+    }
+  }
+#endif
+}
 /*
 internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName, int32 AlignX, int32 TopDownAlignY)
 {
@@ -820,7 +891,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     TranState->Assets = AllocateGameAssets(&TranState->TranArena, Megabytes(64), TranState);
 
-    
+    DEBUGRenderGroup = AllocateRenderGroup(TranState->Assets, &TranState->TranArena, Megabytes(16), false);
+      
     TranState->GroundBufferCount = 256;
     TranState->GroundBuffers = PushArray(&TranState->TranArena, TranState->GroundBufferCount, ground_buffer);
     
@@ -879,6 +951,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     TranState->Initialized = true;
   }
 
+  if(DEBUGRenderGroup)
+  {
+    BeginRenderGroup(DEBUGRenderGroup);
+    DEBUGReset(Buffer->Width, Buffer->Height);
+  }
+  
   if(Input->ExcutableReloaded)
   {
     for(uint32 GroundBufferIndex = 0; GroundBufferIndex < TranState->GroundBufferCount; ++GroundBufferIndex)
@@ -976,6 +1054,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   DrawBuffer->Memory = Buffer->Memory;
 
   render_group *RenderGroup = AllocateRenderGroup(TranState->Assets, &TranState->TranArena, Megabytes(4), false);
+  BeginRenderGroup(RenderGroup);
   
   real32 WidthOfMonitor =  0.635f;
   real32 MetersToPixels = (real32)DrawBuffer->Width*WidthOfMonitor;
@@ -1491,8 +1570,16 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   CheckArena(&GameState->WorldArena);
   CheckArena(&TranState->TranArena);
-  END_TIMED_BLOCK(GameUpdateAndRender);
 
+  OverlayCycleCounters(Memory);
+
+  if(DEBUGRenderGroup)
+  {
+    TiledRenderGroupToOutput(TranState->HighPriorityQueue, DEBUGRenderGroup, DrawBuffer);
+    FinishRenderGroup(DEBUGRenderGroup);
+  }
+  
+  END_TIMED_BLOCK(GameUpdateAndRender);
 }
 
 

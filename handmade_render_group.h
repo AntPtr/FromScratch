@@ -104,6 +104,8 @@ struct render_group
   uint32 MissingBitmapCounts;
   bool32 RendersInBackground;
   uint32 GenerationID;
+
+  bool32 InsideRender;
 };
 
 #define HANDMADE_RENDER_GROUP_H

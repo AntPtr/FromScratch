@@ -411,7 +411,10 @@ internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 Co
   loaded_bitmap Result = {};
  
 #if USE_FONT_FROM_WINDOWS
+  int MaxWidth = 1024;
+  int MaxHeight = 1024;
   static HDC DeviceContext = 0;
+  static VOID *Bits = 0;
   if(!DeviceContext)
   {
     AddFontResourceExA(FileName, FR_PRIVATE, 0);
@@ -422,9 +425,25 @@ internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 Co
 			     DEFAULT_PITCH|FW_DONTCARE, FontName);
 
     DeviceContext = CreateCompatibleDC(0);
-    HBITMAP Bitmap = CreateCompatibleBitmap(DeviceContext, 1024, 1024);
+
+    BITMAPINFO Info = {};
+    
+    Info.bmiHeader.biSize = sizeof(Info.bmiHeader);
+    Info.bmiHeader.biWidth = MaxWidth;
+    Info.bmiHeader.biHeight = MaxHeight;
+    Info.bmiHeader.biPlanes = 1;
+    Info.bmiHeader.biBitCount = 32;
+    Info.bmiHeader.biCompression = BI_RGB;
+    Info.bmiHeader.biSizeImage = 0;
+    Info.bmiHeader.biXPelsPerMeter = 0;
+    Info.bmiHeader.biYPelsPerMeter = 0;
+    Info.bmiHeader.biClrUsed = 0;
+    Info.bmiHeader.biClrImportant = 0;
+    HBITMAP Bitmap = CreateDIBSection(DeviceContext, &Info, DIB_RGB_COLORS, &Bits, 0, 0);
+
     SelectObject(DeviceContext, Bitmap);
     SelectObject(DeviceContext, Font);
+
     SetBkColor(DeviceContext, RGB(0, 0 ,0));
 
     TEXTMETRIC TextMetric;
@@ -436,8 +455,17 @@ internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 Co
   GetTextExtentPoint32W(DeviceContext, &CheesePoint, 1, &Size); 
 
   int Width = Size.cx;
+  if(Width > MaxWidth)
+  {
+    Width = MaxWidth;
+  }
+  
   int Height = Size.cy;
-
+  if(Height > MaxHeight)
+  {
+    Width = MaxHeight;
+  }
+  
   SetBkMode(DeviceContext, OPAQUE);
   SetBkColor(DeviceContext, RGB(0, 0, 0));
   SetTextColor(DeviceContext, RGB(255, 255, 255));
@@ -449,12 +477,15 @@ internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 Co
   int MaxX = -10000;
   int MaxY = -10000;
 
+  uint32 *Row = (uint32 *)Bits + MaxWidth*(MaxHeight - 1);
+  
   for(int Y = 0; Y < Height; ++Y)
   {
+    uint32 *Pixel = Row;
     for(int X = 0; X < Width; ++X)
     {
-      COLORREF Pixel = GetPixel(DeviceContext, X, Y);
-      if(Pixel != 0)
+      //COLORREF Pixel = GetPixel(DeviceContext, X, Y);
+      if(*Pixel != 0)
       {
 	if(MinX > X)
 	{
@@ -476,45 +507,45 @@ internal loaded_bitmap LoadGlyphBitmap(char *FileName, char *FontName, uint32 Co
 	  MaxY = Y;
 	}
       }
+      ++Pixel;
     }
+    Row -= MaxWidth;
   }
   
   if(MinX <= MaxX)
   {
-    --MinX;
-    --MinY;
-    ++MaxX;
-    ++MaxY;
-    
-    Width = (MaxX - MinX);
-    Height = (MaxY - MinY);
+    Width = (MaxX - MinX) + 1;
+    Height = (MaxY - MinY) + 1;
 
-    Result.Pitch = Width*BITMAP_BYTES_PER_PIXEL;
-    Result.Width = Width;
-    Result.Height = Height;
+    Result.Width = Width + 2;
+    Result.Height = Height + 2;
+    Result.Pitch = Result.Width*BITMAP_BYTES_PER_PIXEL;
     Result.Memory = malloc(Result.Height*Result.Pitch);
     Result.Free = Result.Memory;
 
-    uint8 *DestRow = (uint8 *)Result.Memory + (Height - 1)*Result.Pitch;
-  
+    memset(Result.Memory, 0, Result.Height*Result.Pitch);
+    
+    uint8 *DestRow = (uint8 *)Result.Memory + (Result.Height - 1 - 1)*Result.Pitch;
+    uint32 *SourceRow = (uint32 *)Bits + MaxWidth*(MaxHeight - 1 - MinY);
+    
     for(int Y = MinY; Y < MaxY; ++Y)
     {
-      uint32 *Dest = (uint32 *)DestRow;
+      uint32 *Dest = (uint32 *)DestRow + 1;
+      uint32 *Source =  (uint32 *)SourceRow + MinX;
       for(int X = MinX; X < MaxX; ++X)
       {
-	COLORREF Pixel = GetPixel(DeviceContext, X, Y);
+	uint32 Pixel = *Source;
 	uint8 Alpha = 0;
-	if(Pixel != CLR_INVALID)
-	{
-	  Alpha = uint8(Pixel & 0xFF);
-	}
+    
+	Alpha = uint8(Pixel & 0xFF);
 	*Dest++ = ((Alpha << 24)|
 		   (Alpha << 16)|
 		   (Alpha << 8)|
 		   (Alpha << 0));
-
+	++Source;
       }
-      DestRow -= Result.Pitch; 
+       DestRow -= Result.Pitch;
+       SourceRow -= MaxWidth;
     }
      
   }
@@ -728,7 +759,7 @@ internal void WriteNonHero()
   EndAssetType(Assets);
 
   BeginAssetType(Assets, Asset_Fonts);
-  for(uint32 Char = 'A'; Char <= 'Z'; ++Char)
+  for(uint32 Char = '!'; Char <= '~'; ++Char)
   {
     AddCharcterAsset(Assets, "c:/Windows/Fonts/arial.ttf", "Arial", Char);
     AddTag(Assets, Tag_UTFCodePoint, (real32)Char);

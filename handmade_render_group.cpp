@@ -921,7 +921,7 @@ internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Ar
   }
   Result->PushBufferBase = (uint8 *)PushSize(Arena, MaxPushBufferSize);
  
-  Result->GenerationID = BeginGenerationID(Assets);
+  //Result->GenerationID = BeginGenerationID(Assets);
 
   Result->MaxPushBufferSize = MaxPushBufferSize;
   Result->PushBufferSize = 0;
@@ -933,15 +933,26 @@ internal render_group *AllocateRenderGroup(game_assets *Assets, memory_arena *Ar
 
   Result->MissingBitmapCounts = 0;
   Result->RendersInBackground = RendersInBackground;
-
+  Result->InsideRender = false;
   return Result;
+}
+
+internal void BeginRenderGroup(render_group *Group)
+{
+  Assert(!Group->InsideRender);
+  Group->InsideRender = true;
+  Group->GenerationID = BeginGenerationID(Group->Assets);
 }
 
 internal void FinishRenderGroup(render_group *Group)
 {
+  Assert(Group->InsideRender);
   if(Group)
   {
     EndGenerationID(Group->Assets, Group->GenerationID);
+    Group->InsideRender = false;
+    Group->GenerationID = 0;
+    Group->PushBufferSize = 0;
   }
 }  
 
