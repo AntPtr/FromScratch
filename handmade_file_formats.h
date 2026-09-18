@@ -33,6 +33,7 @@ enum asset_type_id
   Asset_DungeonSound,
   Asset_Familiar,
   Asset_Fonts,
+  Asset_FontGlyph,
 
   Asset_Count,
 };
@@ -78,6 +79,11 @@ struct bitmap_id
   uint32 Value;
 };
 
+struct font_id
+{
+  uint32 Value;
+};
+
 struct hha_tag
 {
   uint32 ID;
@@ -104,6 +110,13 @@ struct hha_sound
   uint32 ChannelCount;
 };
 
+struct hha_font
+{
+  uint32 CodePointCount;
+  real32 LineAdvance;
+  //In the actual data there is BitmapID[],
+  //HorizontalAdavcen[]
+};
 
 struct hha_asset
 {
@@ -114,6 +127,7 @@ struct hha_asset
   {
     hha_bitmap Bitmap;
     hha_sound Sound;
+    hha_font Font;
   };
 };
 

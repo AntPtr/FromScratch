@@ -375,7 +375,12 @@ inline platform_file_handle *GetFileHandleFor(game_assets *Assets, uint32 FileIn
   return Handle;
 }
 
-
+inline asset_file *GetFile(game_assets *Assets, uint32 FileIndex)
+{
+  Assert(FileIndex < Assets->FileCount);
+  asset_file *Handle = Assets->Files + FileIndex;
+  return Handle;
+}
 
 inline asset_memory_block *FindBlockForSize(game_assets *Assets, memory_index Size)
 {
@@ -590,6 +595,63 @@ internal void LoadBitmap(game_assets *Assets, bitmap_id ID, bool32 Immediate)
   }
 }
 
+internal void LoadFont(game_assets *Assets, font_id ID, bool32 Immediate) 
+{
+  asset *Asset = Assets->Assets + ID.Value;
+  if(ID.Value && AtomicCompareExchangeUInt32((uint32 *)&Assets->Assets[ID.Value].State, AssetState_Queued, AssetState_Unloaded) == AssetState_Unloaded)
+  {
+    task_with_memory *Task = 0;
+    if(!Immediate)
+    {  
+      Task = BeginTaskWithMemory(Assets->TranState);
+    }
+    
+    if(Immediate || Task)
+    {
+      //asset *Asset = Assets->Assets + ID.Value;
+      hha_font *Info = &Asset->HHA.Font;
+      uint32 HorizontalAdvanceSize = sizeof(real32)*(Info->CodePointCount*Info->CodePointCount);
+      uint32 CodePointsSize = sizeof(bitmap_id)*Info->CodePointCount;
+      uint32 SizeData = HorizontalAdvanceSize + CodePointsSize;
+      uint32 SizeTotal = sizeof(asset_memory_header) + SizeData;
+      
+      Asset->Header = AcquireAssetMemory(Assets, SizeTotal, ID.Value);
+      loaded_font *Font = &Asset->Header->Font;
+      Font->CodePoints = (bitmap_id *)(Asset->Header + 1);
+      Font->HorizontalAdvance = (real32 *)((uint8 *)Font->CodePoints + CodePointsSize);
+      Font->BitmapIDOffset = GetFile(Assets, Asset->FileIndex)->FontBitmapIDOffset;
+
+      load_asset_work Work;
+      Work.Asset = Assets->Assets + ID.Value;
+      Work.Handle = GetFileHandleFor(Assets, Asset->FileIndex);
+      Work.Offset = Asset->HHA.DataOffset;
+      Work.Size = SizeData;
+      Work.Task = Task;
+      Work.Destination = Font->CodePoints;
+      Work.FinalState = (AssetState_Loaded);
+      if(Task)
+      {
+	load_asset_work *TaskWork = PushStruct(&Task->Arena, load_asset_work);
+	*TaskWork = Work;
+	Platform.AddEntry(Assets->TranState->LowPriorityQueue, LoadAssetWork, TaskWork);
+      }
+      else
+      {
+	LoadAssetWorkDirectly(&Work);
+      }      
+    }
+    else
+    {
+      Assets->Assets[ID.Value].State = AssetState_Unloaded;
+    }
+  }
+  else if(Immediate)
+  {
+    asset_state volatile *State = (asset_state volatile *)&Asset->State;
+    while(Asset->State == AssetState_Queued) {}
+  }
+}
+
 internal uint32 BestMatchAsset(game_assets* Assets, asset_type_id TypeID, asset_vector *MatchVector, asset_vector *WeightVector)
 {
   uint32 Result; 
@@ -623,6 +685,12 @@ internal uint32 BestMatchAsset(game_assets* Assets, asset_type_id TypeID, asset_
 internal bitmap_id BestMatchBitmap(game_assets* Assets, asset_type_id TypeID, asset_vector* MatchVector, asset_vector* WeightVector)
 {
   bitmap_id Result = {BestMatchAsset(Assets, TypeID, MatchVector, WeightVector)};
+  return Result;
+}
+
+internal font_id BestMatchFont(game_assets* Assets, asset_type_id TypeID, asset_vector* MatchVector, asset_vector* WeightVector)
+{
+  font_id Result = {BestMatchAsset(Assets, TypeID, MatchVector, WeightVector)};
   return Result;
 }
 
@@ -860,6 +928,7 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
   {
     asset_file *File = Assets->Files + FileIndex;
 
+    File->FontBitmapIDOffset = 0;
     File->TagBase = Assets->TagCounts;
 
     ZeroStruct(File->Header);
@@ -934,6 +1003,10 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
 	  hha_asset_type *SourceType = File->AssetTypeArray + SourceIndex;
 	  if(SourceType->TypeID == DestTypeID)
 	  {
+	    if(SourceType->TypeID == Asset_FontGlyph)
+	    {
+		File->FontBitmapIDOffset = AssetCount - SourceType->FirstAssetIndex;
+	    }
 	    uint32 AssetCountForType = (SourceType->OnePastLastAssetIndex - SourceType->FirstAssetIndex);
 
 	    temporary_memory TempMem = BeginTemporaryMemory(&TranState->TranArena);
@@ -944,14 +1017,16 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
 	    for(uint32 AssetIndex = 0; AssetIndex < AssetCountForType; ++AssetIndex)
 	    {
 	      hha_asset *HHAAsset = HHAAssetArray + AssetIndex;
+
 		
 	      Assert(AssetCount < Assets->AssetCounts);
 	      asset *Asset = Assets->Assets + AssetCount++;
 
 	      Asset->FileIndex = FileIndex;
 	      Asset->HHA = *HHAAsset;
+	      
 	      if(Asset->HHA.FirstTagIndex == 0)
-		{ 
+	      { 
 		Asset->HHA.FirstTagIndex =  Asset->HHA.OneLastPastTagIndex = 0; 
 	      }
 	      else
@@ -1107,4 +1182,36 @@ void MoveHeaderToFront(game_assets *Assets, asset *Asset)
   InsertAssetHeaderAtFront(Assets, Header);
 }
 
+inline uint32 GetClampCodePoint(hha_font *Info, uint32 CodePoint)
+{
+  uint32 Result = 0;
+  if(CodePoint < Info->CodePointCount)
+  {
+    Result = CodePoint;
+  }
+  return Result;
+}
 
+internal real32 GetHorizonatalAdvanceForPair(hha_font *Info, loaded_font *Font, uint32 DesiredPrevCodePoint, uint32 DesiredCodePoint)
+{
+  uint32 PrevCodePoint = GetClampCodePoint(Info, DesiredPrevCodePoint);
+  uint32 CodePoint = GetClampCodePoint(Info,DesiredCodePoint);
+ 
+  real32 Result = Font->HorizontalAdvance[PrevCodePoint*Info->CodePointCount + CodePoint];
+  return Result;
+}
+
+internal bitmap_id GetBitmapForGlyph(game_assets *Assets, hha_font *Info, loaded_font *Font, uint32 DesiredCodePoint)
+{
+  uint32 CodePoint = GetClampCodePoint(Info, DesiredCodePoint);
+  
+  bitmap_id Result = Font->CodePoints[CodePoint];
+  Result.Value += Font->BitmapIDOffset;
+  return Result;
+}
+
+internal real32 GetLineAdvance(hha_font *Info)
+{
+  real32 Result = Info->LineAdvance;
+  return Result;
+}

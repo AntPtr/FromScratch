@@ -13,23 +13,49 @@
 #define Align8(value) ((value + 7) & ~7)
 
 #define Assert(Expr) if(!(Expr)) {*(int *)0=0;}
+#define global_variable static
 
 enum asset_type
 {
   AssetType_Sound,
   AssetType_Bitmap,
   AssetType_Font,
+  AssetType_FontGlyph,
+};
+
+struct loaded_font;
+struct asset_source_font
+{
+  loaded_font *Font;
+  char *FontName; 
+};
+
+struct asset_source_font_glyph
+{
+  loaded_font *Font;
+  uint32 CodePoint;
+};
+
+struct asset_source_sound
+{
+  char *FileName;
+  uint32 FirstSampleIndex;
+};
+
+struct asset_source_bitmap
+{
+  char *FileName;
 };
 
 struct asset_source
 {
   asset_type Type;
-  char *FileName;
-  char *FontName;
   union
   {
-    uint32 FirstSampleIndex;
-    uint32 CodePoint;
+    asset_source_bitmap Bitmap;
+    asset_source_sound Sound;
+    asset_source_font Font;
+    asset_source_font_glyph Glyph;
   };
 };
 

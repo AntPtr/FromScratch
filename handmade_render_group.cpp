@@ -246,6 +246,20 @@ inline void PushBitmap(render_group *Group, bitmap_id ID, v3 Offset, real32 Heig
   }
 }
 
+inline loaded_font *PushFont(render_group *Group, font_id FontID)
+{
+  loaded_font *Font = GetFont(Group->Assets, FontID, Group->GenerationID);
+  if(Font)
+  {
+    //Nothing to do here
+  }
+  else
+  {
+    LoadFont(Group->Assets, FontID, false);
+    ++Group->MissingBitmapCounts;
+  }
+  return Font;
+}
 
 inline void PushRect(render_group *Group, v3 Offset, v2 Dim, v4 Color)
 {

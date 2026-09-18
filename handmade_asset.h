@@ -88,6 +88,14 @@ struct asset_file
   hha_header Header;
   hha_asset_type *AssetTypeArray;
   uint32 TagBase;
+  int32 FontBitmapIDOffset;
+};
+
+struct loaded_font
+{
+  bitmap_id *CodePoints;
+  real32 *HorizontalAdvance;
+  uint32 BitmapIDOffset;
 };
 
 struct asset_memory_header
@@ -102,6 +110,7 @@ struct asset_memory_header
   {
     loaded_bitmap Bitmap;
     loaded_sound Sound;
+    loaded_font Font;
   };  
 };
 
@@ -126,6 +135,7 @@ struct asset_memory_block
   uint64 Flag;
   memory_index Size;
 };
+
 
 struct game_assets
 {
@@ -231,6 +241,10 @@ inline asset_memory_header *GetAsset(game_assets *Assets, uint32 ID, uint32 Gene
   if(Asset->State == AssetState_Loaded)
   {
     Result = Asset->Header;
+    if(Result->Prev == (asset_memory_header *)-1)
+    {
+    __debugbreak();
+    }
     RemoveAssetHeaderFromList(Result);
     InsertAssetHeaderAtFront(Assets, Result);
 
@@ -254,10 +268,17 @@ inline loaded_bitmap *GetBitmap(game_assets *Assets, bitmap_id ID, uint32 Genera
   return Result;
 }
 
-inline loaded_sound* GetSound(game_assets* Assets, sound_id ID, uint32 GenerationID)
+inline loaded_sound *GetSound(game_assets* Assets, sound_id ID, uint32 GenerationID)
 {
   asset_memory_header *Header = GetAsset(Assets, ID.Value, GenerationID);
   loaded_sound *Result = Header ? &Header->Sound : 0;
+  return Result;
+}
+
+inline loaded_font *GetFont(game_assets* Assets, font_id ID, uint32 GenerationID)
+{
+  asset_memory_header *Header = GetAsset(Assets, ID.Value, GenerationID);
+  loaded_font *Result = Header ? &Header->Font : 0;
   return Result;
 }
 
@@ -269,6 +290,19 @@ inline hha_sound* GetSoundInfo(game_assets* Assets, sound_id ID)
   return Info;
 }
 
+inline hha_bitmap* GetBitmapInfo(game_assets* Assets, bitmap_id ID)
+{
+  hha_bitmap* Info = &Assets->Assets[ID.Value].HHA.Bitmap;
+
+  return Info;
+}
+
+inline hha_font* GetFontInfo(game_assets* Assets, font_id ID)
+{
+  hha_font* Info = &Assets->Assets[ID.Value].HHA.Font;
+
+  return Info;
+}
 
 inline bool32 IsValid(bitmap_id ID)
 {
@@ -318,6 +352,7 @@ internal void LoadSound(game_assets *Assets, sound_id ID);
 internal void LoadBitmap(game_assets *Assets, bitmap_id ID, bool32 Immediate);
 internal task_with_memory *BeginTaskWithMemory(transient_state *TranState);
 internal void EndTaskWithMemory(task_with_memory *Task);
+internal void LoadFont(game_assets *Assets, font_id ID, bool32 Immediate);
 
 inline uint32 BeginGenerationID(game_assets *Assets)
 {

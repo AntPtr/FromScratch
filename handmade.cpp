@@ -562,11 +562,10 @@ global_variable real32 FontScale;
 
 internal void DEBUGReset(uint32 Width, uint32 Height)
 {
-  FontScale = 20.0f;
-  AtY = 0.5f*Height - 0.5f*FontScale;
+  FontScale = 1.0f;
+  AtY = 0.5f*Height - 88.0f*FontScale;
   LeftEdge = -0.5f*Width + 0.5f*FontScale; 
-  Orthographic(DEBUGRenderGroup, Width, Height, 1.0f);
-  
+  Orthographic(DEBUGRenderGroup, Width, Height, 1.0f);  
 }
 
 internal void DEBUGTextLine(char *String)
@@ -574,24 +573,38 @@ internal void DEBUGTextLine(char *String)
   if(DEBUGRenderGroup)
   {
     render_group *RenderGroup = DEBUGRenderGroup;
-    asset_vector MatchVector1 = {};
-    asset_vector WeightVector1 = {};
-    WeightVector1.E[Tag_UTFCodePoint] = 1.0f;
+    
+    asset_vector MatchVector = {};
+    asset_vector WeightVector = {};
 
-    real32 AtX = LeftEdge;;
-      
-    for(char *At = String; *At; ++At)
+    font_id FontID = BestMatchFont(RenderGroup->Assets, Asset_Fonts, &MatchVector, &WeightVector);
+    loaded_font *Font = PushFont(RenderGroup, FontID);
+    if(Font)
     {
-      if(*At !=  ' ')
+      hha_font *Info = GetFontInfo(RenderGroup->Assets, FontID);
+      asset *DebugAsset = RenderGroup->Assets->Assets + FontID.Value;
+      real32 AtX = LeftEdge;
+      uint32 PrevCodePoint = 0;
+    
+      for(char *At = String; *At; ++At)
       {
-	MatchVector1.E[Tag_UTFCodePoint] = *At;
-	bitmap_id BitmapID = BestMatchBitmap(RenderGroup->Assets, Asset_Fonts, &MatchVector1, &WeightVector1);
-	PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale, v4{1, 1, 1, 1});
+	uint32 CodePoint = *At;
+	
+	//real32 CharDim = 10.0f;
+	real32 AdvanceX = GetHorizonatalAdvanceForPair(Info, Font, PrevCodePoint, CodePoint);
+	AtX += AdvanceX*FontScale;
+	if(CodePoint !=  ' ')
+	{
+	  bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
+	  hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
+	  //CharDim = FontScale*(real32)InfoBitmap->Dim[0];
+	  PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale*(real32)InfoBitmap->Dim[1], v4{1, 1, 1, 1});
+	}
+	PrevCodePoint = CodePoint;
       }
-      AtX += FontScale;
+      AtY -= GetLineAdvance(Info)*FontScale;
     }
-    AtY -= 1.2f*FontScale;
-  }	    
+  }
 }
 
 internal void OverlayCycleCounters(game_memory *Memory)
@@ -613,7 +626,7 @@ internal void OverlayCycleCounters(game_memory *Memory)
     debug_cycle_counter *Counter = Memory->Counter + CounterIndex;
     if(Counter->HitCount)
     {
-#if 0      
+#if 0     
       char TextBuffer[256];
 
       sprintf_s(TextBuffer, " %d: %I64ucy %uh  %I64ucy/h\n", CounterIndex, Counter->CycleCount, Counter->HitCount, Counter->CycleCount / Counter->HitCount);
@@ -621,7 +634,7 @@ internal void OverlayCycleCounters(game_memory *Memory)
       Counter->HitCount = 0;
       Counter->CycleCount = 0;
 #endif
-      //DEBUGTextLine(NameTable[CounterIndex]);
+      DEBUGTextLine(NameTable[CounterIndex]);
     }
   }
 #endif
@@ -1325,7 +1338,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	  bitmap_id Wizard = BestMatchBitmap(TranState->Assets, Asset_Wizard, &MatchVector, &WeightVector);
 	  PushBitmap(RenderGroup, Wizard, v3{0, 0, 0}, 1.8f);
 	  DrawHitpoints(Entity, RenderGroup);
-
+#if 0
 	  ZeroStruct(GameState->ParticleCels);
 	  real32 GridScale = 0.2f;
 	  v3 GridOrigin = v3{-0.5f*GridScale*PARTICLE_CEL_DIM, 0.0f, 0.0f};
@@ -1432,9 +1445,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 	    }
 	    
 	    PushBitmap(RenderGroup, Particle->BitmapID, Particle->P, 0.5f, Color);
-
 	  }
-	  
+#endif
         } break;
 	
         case EntityType_Wall:
