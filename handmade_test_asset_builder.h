@@ -23,6 +23,7 @@ enum asset_type
   AssetType_FontGlyph,
 };
 
+
 struct loaded_font;
 struct asset_source_font
 {

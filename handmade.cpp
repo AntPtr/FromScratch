@@ -559,25 +559,26 @@ global_variable render_group *DEBUGRenderGroup;
 global_variable real32 AtY;
 global_variable real32 LeftEdge;
 global_variable real32 FontScale;
+global_variable font_id FontID;
 
-internal void DEBUGReset(uint32 Width, uint32 Height)
+internal void DEBUGReset(game_assets *Assets, uint32 Width, uint32 Height)
 {
+  asset_vector MatchVector = {};
+  asset_vector WeightVector = {};
+
+  FontID = BestMatchFont(Assets, Asset_Fonts, &MatchVector, &WeightVector);
   FontScale = 1.0f;
-  AtY = 0.5f*Height - 88.0f*FontScale;
-  LeftEdge = -0.5f*Width + 0.5f*FontScale; 
+  hha_font *Info = GetFontInfo(Assets, FontID);
+  AtY = 0.5f*Height - FontScale*GetBaseLineY(Info);
+  LeftEdge = -0.5f*Width; 
   Orthographic(DEBUGRenderGroup, Width, Height, 1.0f);  
 }
 
-internal void DEBUGTextLine(char *String)
+internal void DEBUGTextLine(char *String, v4 Color = v4{1.0, 1.0, 1.0, 1.0})
 {
   if(DEBUGRenderGroup)
   {
     render_group *RenderGroup = DEBUGRenderGroup;
-    
-    asset_vector MatchVector = {};
-    asset_vector WeightVector = {};
-
-    font_id FontID = BestMatchFont(RenderGroup->Assets, Asset_Fonts, &MatchVector, &WeightVector);
     loaded_font *Font = PushFont(RenderGroup, FontID);
     if(Font)
     {
@@ -585,23 +586,38 @@ internal void DEBUGTextLine(char *String)
       asset *DebugAsset = RenderGroup->Assets->Assets + FontID.Value;
       real32 AtX = LeftEdge;
       uint32 PrevCodePoint = 0;
-    
-      for(char *At = String; *At; ++At)
+      if(String[0] == '/')
       {
-	uint32 CodePoint = *At;
+	uint32 CodePoint = 0x706B;
 	
-	//real32 CharDim = 10.0f;
 	real32 AdvanceX = GetHorizonatalAdvanceForPair(Info, Font, PrevCodePoint, CodePoint);
 	AtX += AdvanceX*FontScale;
-	if(CodePoint !=  ' ')
-	{
-	  bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
-	  hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
-	  //CharDim = FontScale*(real32)InfoBitmap->Dim[0];
-	  PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale*(real32)InfoBitmap->Dim[1], v4{1, 1, 1, 1});
-	}
+	bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
+	hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
+	//CharDim = FontScale*(real32)InfoBitmap->Dim[0];
+	PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale*(real32)InfoBitmap->Dim[1], Color);  
 	PrevCodePoint = CodePoint;
       }
+      else
+      {
+	for(char *At = String; *At; ++At)
+        {
+	  uint32 CodePoint = *At;
+	
+	  //real32 CharDim = 10.0f;
+	  real32 AdvanceX = GetHorizonatalAdvanceForPair(Info, Font, PrevCodePoint, CodePoint);
+	  AtX += AdvanceX*FontScale;
+	  if(CodePoint !=  ' ')
+	  {
+	    bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
+	    hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
+	    //CharDim = FontScale*(real32)InfoBitmap->Dim[0];
+	    PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale*(real32)InfoBitmap->Dim[1], Color);
+	  }
+	  PrevCodePoint = CodePoint;
+	}
+      }
+      
       AtY -= GetLineAdvance(Info)*FontScale;
     }
   }
@@ -611,7 +627,8 @@ internal void OverlayCycleCounters(game_memory *Memory)
 {
 #if H_INTERNAL
   //  DEBUGTextLine("DEBUG CYCLE COUNT:\n");
-  DEBUGTextLine("Ciao Roxie");
+  DEBUGTextLine("/", v4{0.4f, 0.0f, 0.0f, 1.0f});
+  DEBUGTextLine("Ciao Roxie", v4{0.024f, 0.4f, 0.169f, 1.0f});
 
   char *NameTable[] = {
     "GameUpdateAndRedner",
@@ -662,11 +679,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if H_INTERNAL
   DebugGlobalMemory = Memory;
 #endif
-
   Platform = Memory->PlatformAPI;
   BEGIN_TIMED_BLOCK(GameUpdateAndRender);
-  Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
-  Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) == (ArrayCount(Input->Controllers[0].Buttons)));
+  // Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
+  //Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) == (ArrayCount(Input->Controllers[0].Buttons)));
 
   game_state *GameState = (game_state *)Memory->PermanentStorage;
   //Remeber to remove this!
@@ -967,7 +983,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   if(DEBUGRenderGroup)
   {
     BeginRenderGroup(DEBUGRenderGroup);
-    DEBUGReset(Buffer->Width, Buffer->Height);
+    DEBUGReset(TranState->Assets, Buffer->Width, Buffer->Height);
   }
   
   if(Input->ExcutableReloaded)

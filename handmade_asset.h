@@ -93,9 +93,10 @@ struct asset_file
 
 struct loaded_font
 {
-  bitmap_id *CodePoints;
+  hha_font_glyph *Glyphs;
   real32 *HorizontalAdvance;
   uint32 BitmapIDOffset;
+  uint16 *UnicodeMap;
 };
 
 struct asset_memory_header

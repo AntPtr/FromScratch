@@ -53,7 +53,6 @@ typedef float real32;
 typedef double real64;
 
 #define Real32Maximum FLT_MAX
-
 #include "handmade_intrisic.h"
 #include "handmade_math.h"
 #include "handmade_world.h"
@@ -110,13 +109,13 @@ typedef enum platform_file_type
   PlatformFileType_SavedFile,
 } platform_file_type;
 
-#define PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(name) platform_file_group name(platform_file_type Type)
+#define PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(name) platform_file_group name(platform_file_type Type, void *PlatformState)
 typedef PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(platform_get_all_file_of_type_begin);
 
 #define PLATFORM_GET_ALL_FILE_OF_TYPE_END(name) void name(platform_file_group *FileGroup)
 typedef PLATFORM_GET_ALL_FILE_OF_TYPE_END(platform_get_all_file_of_type_end);
 
-#define PLATFORM_OPEN_FILE(name) platform_file_handle name(platform_file_group *FileGroup)
+#define PLATFORM_OPEN_FILE(name) platform_file_handle name(platform_file_group *FileGroup, void *PlatformState)
 typedef PLATFORM_OPEN_FILE(platform_open_next_file);
 
 #define PLATFORM_READ_DATA_FROM_FILE(name) void name(platform_file_handle *Source, uint64 Offset, uint64 Size, void *Dest)
@@ -151,7 +150,9 @@ typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
 typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
 
 struct platform_api
-{ 
+{
+  void *PlatformState;
+
   platform_add_entry *AddEntry;
   platform_complete_all_work *CompleteAllWork;
 
@@ -513,6 +514,7 @@ internal void *PushSize(memory_arena *Arena, memory_index Size, memory_index Ali
 }
 
 #define ZeroStruct(Instance) ZeroSize(sizeof(Instance), &Instance)
+#define ZeroArray(Counter, Pointer) ZeroSize(Count*sizeof(Pointer[o]), Pointer)
 inline void ZeroSize(memory_index Size, void *Ptr)
 {
   uint8 *Byte = (uint8 *)Ptr;

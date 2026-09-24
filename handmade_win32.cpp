@@ -687,8 +687,30 @@ internal win32_game_code Win32LoadGameCode(char *SourceDLLName, char *TempDLLNam
   {
     Result.DLLLastWriteTime = Win32GetLastWriteTime(SourceDLLName);
     
-    CopyFile(SourceDLLName, TempDLLName, FALSE);
+    BOOL CopyResult = CopyFile(SourceDLLName, TempDLLName, FALSE);
+    if(!CopyResult)
+    {
+      DWORD Error = GetLastError();
+
+      char Message[256];
+      wsprintfA(Message,
+		"CopyFile failed! Error = %lu",
+		Error);
+
+      MessageBoxA(0, Message, "Handmade", MB_OK);
+    }
     Result.GameCodeDLL = LoadLibraryA(TempDLLName);
+    if(!Result.GameCodeDLL)
+    {
+      DWORD Error = GetLastError();
+
+      char Message[256];
+      wsprintfA(Message,
+		"LoadLibrary failed!\nError = %lu",
+		Error);
+
+      MessageBoxA(0, Message, "Handmade", MB_OK);
+    }
     if(Result.GameCodeDLL)
     {
       Result.UpdateAndRender = 
@@ -983,6 +1005,7 @@ struct win32_platform_file_group
 
 internal PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(Win32GetAllFilesOfTypeBegin)
 {
+  win32_state *State = (win32_state *)PlatformState;
   platform_file_group Result = {};
   win32_platform_file_group *Win32FileGroup =(win32_platform_file_group *)VirtualAlloc(0, sizeof(win32_platform_file_group), MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
   Result.FileCount = 0;
@@ -990,22 +1013,28 @@ internal PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(Win32GetAllFilesOfTypeBegin)
   Result.Platform = Win32FileGroup;
 
   WIN32_FIND_DATAA FindData;
-  char *WildCard = "*.";
+  //char *WildCard = "*.";
+  char WildCard[MAX_PATH];
+  
   switch(Type)
   {
     case PlatformFileType_AssetFile:
     {
-      WildCard = "*.hha";
+      // WildCard = "W:\\base\\data\\*.hha";
+      //WildCard = "*.hha";
+      Win32BuildEXEPathFilename(State, "data\\*.hha",sizeof(WildCard), WildCard);
     } break;
     case PlatformFileType_SavedFile:
     {
-      WildCard = "*.hhs";
+      // WildCard = "*.hhs";
+      Win32BuildEXEPathFilename(State, "data\\*.hhs", sizeof(WildCard), WildCard);
     } break;
     default:
     {
       InvalidCodePath;
     }
   }
+
   HANDLE FindHandle = FindFirstFileA(WildCard, &FindData);
   while(FindHandle != INVALID_HANDLE_VALUE)
   {
@@ -1022,6 +1051,7 @@ internal PLATFORM_GET_ALL_FILE_OF_TYPE_BEGIN(Win32GetAllFilesOfTypeBegin)
   {
     FindClose(FindHandle);
   }
+
 
   Win32FileGroup->FindHandle = FindFirstFileA(WildCard, &Win32FileGroup->FindData);
   
@@ -1047,6 +1077,7 @@ internal PLATFORM_OPEN_FILE(Win32OpenNextFile)
   win32_platform_file_group *Win32FileGroup = (win32_platform_file_group *)(FileGroup->Platform);
 
   platform_file_handle Result = {};
+  win32_state *State = (win32_state *)PlatformState;
   
   if(Win32FileGroup->FindHandle != INVALID_HANDLE_VALUE)
   {
@@ -1056,7 +1087,15 @@ internal PLATFORM_OPEN_FILE(Win32OpenNextFile)
     
     if(Win32Handle)
     {
-      char *Filename = Win32FileGroup->FindData.cFileName;
+      //char *Filename = Win32FileGroup->FindData.cFileName;
+      /*char Filename[MAX_PATH];
+      wsprintfA(Filename, "W:\\base\\data\\%s",
+      Win32FileGroup->FindData.cFileName);*/
+      char Filename[MAX_PATH];
+
+      Win32BuildEXEPathFilename(State, "data\\", sizeof(Filename), Filename);
+      CatStrings(StringLength(Filename), Filename, StringLength(Win32FileGroup->FindData.cFileName),
+		 Win32FileGroup->FindData.cFileName, sizeof(Filename), Filename);
       Win32Handle->Win32Handle = CreateFileA(Filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
       Result.NoErrors = (Win32Handle->Win32Handle != INVALID_HANDLE_VALUE);
     }
@@ -1143,7 +1182,6 @@ int WINAPI wWinMain(HINSTANCE Instance,
 		    PWSTR CommandLine,
 		    int ShoCode)
 {
-
   Win32LoadXInput();
   WNDCLASSA WindowClass = {};
   win32_state Win32State = {};
@@ -1184,7 +1222,6 @@ int WINAPI wWinMain(HINSTANCE Instance,
   bool32 SoundIsValid = false;
   LARGE_INTEGER FlipWallClock = Win32GetClock();
   Win32GetEXEFilename(&Win32State);
-
 #if H_INTERNAL
   DEBUGLoadCursor = true;
 #endif
@@ -1280,6 +1317,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
       GameMemory.PlatformAPI.FileError = Win32FileError;
       GameMemory.PlatformAPI.AllocateMemory = Win32AllocateMemory;
       GameMemory.PlatformAPI.DeallocateMemory = Win32DeallocateMemory;
+      GameMemory.PlatformAPI.PlatformState = &Win32State;
 
       
       for(int ReplayIndex = 0; ReplayIndex < ArrayCount(Win32State.ReplayBuffers); ++ReplayIndex)
@@ -1298,9 +1336,18 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	else
 	{
 	  // TODO(casey): Diagnostic
+	  
 	}
       }
-      
+      if(!Samples)
+      {
+	MessageBoxA(0, "Samples == NULL", "DEBUG", MB_OK);
+      }
+
+      if(!GameMemory.PermanentStorage)
+      {
+	  MessageBoxA(0, "GameMemory.PermanentStorage == NULL", "DEBUG", MB_OK);
+      }
       if(Samples && GameMemory.PermanentStorage)
       {
 
@@ -1339,6 +1386,10 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	  
           
 	  Win32MessageLoop(NewKeyBoardController, &Win32State);
+	  if(!Running)
+	  {
+
+	  }
 	  
 	  if(!GlobalPause)
 	  {
@@ -1448,7 +1499,6 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    if(Game.UpdateAndRender)
 	    {
 	      Game.UpdateAndRender(&GameMemory, NewInput , &Buffer);
-	      HandleDebugCycleCounters(&GameMemory);
 	    }
 	    LARGE_INTEGER AudioWallClock = Win32GetClock();
 	    real32 FromBeginToAudioSeconds = Win32GetSecondsElapsed(FlipWallClock, AudioWallClock);
@@ -1623,18 +1673,29 @@ int WINAPI wWinMain(HINSTANCE Instance,
       else
       {
 	//TODO
+	    MessageBoxA(0,
+                        "Samples or GameMemory.PermanentStorage failed",
+                        "Handmade DEBUG",
+                        MB_OK);
       }
     }
     else
     {
       //TODO
+        MessageBoxA(0,
+                    "CreateWindowExA failed",
+                    "Handmade DEBUG",
+                    MB_OK);
     }
   }
   else
   {
     //TODO
+       MessageBoxA(0,
+                "RegisterClassA failed",
+                "Handmade DEBUG",
+                MB_OK);
   }
-  
   return (0);
 }
 

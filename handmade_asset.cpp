@@ -288,6 +288,12 @@ internal loaded_sound DEBUGLoadWAV(char* FileName, uint32 SectionSampleIndex, ui
   return Result;
 }
 #endif
+enum finalize_asset_operation
+{
+  FinalizeAsset_None,
+  FinalizeAsset_Font,
+};
+
 struct load_asset_work
 {
   task_with_memory *Task;
@@ -296,6 +302,8 @@ struct load_asset_work
   uint64 Offset;
   uint64 Size;
   void *Destination;
+
+  finalize_asset_operation FinalizeAssetOperation;
   uint32 FinalState;
 };
 
@@ -303,6 +311,26 @@ internal void LoadAssetWorkDirectly(load_asset_work *Work)
 {
   Platform.ReadDataFromFile(Work->Handle, Work->Offset, Work->Size, Work->Destination);
 
+  if(PlatformNoFileErrors(Work->Handle))
+  {
+    switch(Work->FinalizeAssetOperation)
+    {
+      case FinalizeAsset_None:
+      {
+	//Nothin to do
+      }break;
+      case FinalizeAsset_Font:
+      {
+	loaded_font *Font = &Work->Asset->Header->Font;
+	hha_font *Info = &Work->Asset->HHA.Font;
+	for(uint32 GlyphIndex = 1; GlyphIndex < Info->GlyphCount; ++GlyphIndex)
+	{
+	  hha_font_glyph *Glyph = Font->Glyphs + GlyphIndex; 
+	  Font->UnicodeMap[Glyph->UnicodeCodePoint] = (uint16)GlyphIndex;
+	}
+      }break;
+    }
+  }
   CompletePreviousWriteBeforeFutureWrites;
 
   if(!PlatformNoFileErrors(Work->Handle))
@@ -315,9 +343,8 @@ internal void LoadAssetWorkDirectly(load_asset_work *Work)
 
 internal PLATFORM_WORK_QUEUE_CALLBACK(LoadAssetWork)
 {
-  load_asset_work *Work = (load_asset_work*)Data;
   
-  Platform.ReadDataFromFile(Work->Handle, Work->Offset, Work->Size, Work->Destination);
+  /*Platform.ReadDataFromFile(Work->Handle, Work->Offset, Work->Size, Work->Destination);
 
   CompletePreviousWriteBeforeFutureWrites;
 
@@ -326,8 +353,9 @@ internal PLATFORM_WORK_QUEUE_CALLBACK(LoadAssetWork)
     ZeroSize(Work->Size, Work->Destination);
   }
   
-  Work->Asset->State = Work->FinalState;
-
+  Work->Asset->State = Work->FinalState;*/
+  load_asset_work *Work = (load_asset_work*)Data;
+  LoadAssetWorkDirectly(Work);
   EndTaskWithMemory(Work->Task);
 }
 
@@ -354,7 +382,7 @@ internal PLATFORM_WORK_QUEUE_CALLBACK(LoadBitmapWork)
   Bitmap->WidthOverHeight = (real32)Info->Dim[0] / (real32)Info->Dim[1];
   Bitmap->Width = Info->Dim[0];
   Bitmap->Height = Info->Dim[1];
-  Bitmap->Pitch = 4*Info->Dim[0];
+  Bitmap->Pitch = 4*Info->Dim[0];FinalizeAssetOperation
   Bitmap->Memory = Work->Assets->HHAContents + HHAAsset->DataOffset;
 
   CompletePreviousWriteBeforeFutureWrites;
@@ -571,6 +599,7 @@ internal void LoadBitmap(game_assets *Assets, bitmap_id ID, bool32 Immediate)
       Work.Task = Task;
       Work.Destination = Bitmap->Memory;
       Work.FinalState = (AssetState_Loaded);
+      Work.FinalizeAssetOperation = FinalizeAsset_None;
       //Copy(MemorySize, Assets->HHAContents + HHAAsset->DataOffset, Bitmap->Memory);
       if(Task)
       {
@@ -610,25 +639,29 @@ internal void LoadFont(game_assets *Assets, font_id ID, bool32 Immediate)
     {
       //asset *Asset = Assets->Assets + ID.Value;
       hha_font *Info = &Asset->HHA.Font;
-      uint32 HorizontalAdvanceSize = sizeof(real32)*(Info->CodePointCount*Info->CodePointCount);
-      uint32 CodePointsSize = sizeof(bitmap_id)*Info->CodePointCount;
-      uint32 SizeData = HorizontalAdvanceSize + CodePointsSize;
-      uint32 SizeTotal = sizeof(asset_memory_header) + SizeData;
+      uint32 HorizontalAdvanceSize = sizeof(real32)*(Info->GlyphCount*Info->GlyphCount);
+      uint32 GlyphsSize = sizeof(hha_font_glyph)*Info->GlyphCount;
+      uint32 UnicodeMapSize = sizeof(uint16)*Info->OnePastHighestCodepoint;
+      uint32 SizeData = HorizontalAdvanceSize + GlyphsSize;
+      uint32 SizeTotal = sizeof(asset_memory_header) + SizeData + UnicodeMapSize;
       
       Asset->Header = AcquireAssetMemory(Assets, SizeTotal, ID.Value);
       loaded_font *Font = &Asset->Header->Font;
-      Font->CodePoints = (bitmap_id *)(Asset->Header + 1);
-      Font->HorizontalAdvance = (real32 *)((uint8 *)Font->CodePoints + CodePointsSize);
+      Font->Glyphs = (hha_font_glyph *)(Asset->Header + 1);
+      Font->HorizontalAdvance = (real32 *)((uint8 *)Font->Glyphs + GlyphsSize);
       Font->BitmapIDOffset = GetFile(Assets, Asset->FileIndex)->FontBitmapIDOffset;
-
+      Font->UnicodeMap = (uint16 *)((uint8 *)Font->HorizontalAdvance + HorizontalAdvanceSize);
+      ZeroSize(UnicodeMapSize, Font->UnicodeMap);
+      
       load_asset_work Work;
       Work.Asset = Assets->Assets + ID.Value;
       Work.Handle = GetFileHandleFor(Assets, Asset->FileIndex);
       Work.Offset = Asset->HHA.DataOffset;
       Work.Size = SizeData;
       Work.Task = Task;
-      Work.Destination = Font->CodePoints;
+      Work.Destination = Font->Glyphs;
       Work.FinalState = (AssetState_Loaded);
+      Work.FinalizeAssetOperation = FinalizeAsset_Font;
       if(Task)
       {
 	load_asset_work *TaskWork = PushStruct(&Task->Arena, load_asset_work);
@@ -818,7 +851,7 @@ internal void LoadSound(game_assets *Assets, sound_id ID)
       Work->Task = Task;
       Work->Destination = Memory;
       Work->FinalState = (AssetState_Loaded);
-      
+      Work->FinalizeAssetOperation = FinalizeAsset_None;
       Platform.AddEntry(Assets->TranState->LowPriorityQueue, LoadAssetWork, Work);
     }
     else
@@ -920,7 +953,7 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
   Assets->TagCounts = 1;  
 //------------------------------------------------------------------------
 #if 1
-  platform_file_group FileGroup = Platform.GetAllFilesOfTypeBegin(PlatformFileType_AssetFile);
+  platform_file_group FileGroup = Platform.GetAllFilesOfTypeBegin(PlatformFileType_AssetFile, Platform.PlatformState);
   Assets->FileCount = FileGroup.FileCount;
   Assets->Files = PushArray(Arena, Assets->FileCount, asset_file);
 
@@ -932,7 +965,7 @@ internal game_assets *AllocateGameAssets(memory_arena *Arena, memory_index Size,
     File->TagBase = Assets->TagCounts;
 
     ZeroStruct(File->Header);
-    File->Handle = Platform.OpenNextFile(&FileGroup);
+    File->Handle = Platform.OpenNextFile(&FileGroup, Platform.PlatformState);
     Platform.ReadDataFromFile(&File->Handle, 0, sizeof(File->Header), &File->Header);
     uint32 AssetTypeArraySize = File->Header.AssetTypeCount*sizeof(hha_asset_type);
     File->AssetTypeArray = (hha_asset_type *)PushSize(Arena, AssetTypeArraySize);
@@ -1182,36 +1215,42 @@ void MoveHeaderToFront(game_assets *Assets, asset *Asset)
   InsertAssetHeaderAtFront(Assets, Header);
 }
 
-inline uint32 GetClampCodePoint(hha_font *Info, uint32 CodePoint)
+inline uint32 GetGlyphFromCodePoint(hha_font *Info, loaded_font *Font, uint32 CodePoint)
 {
   uint32 Result = 0;
-  if(CodePoint < Info->CodePointCount)
+  if(CodePoint < Info->OnePastHighestCodepoint)
   {
-    Result = CodePoint;
+    Result = Font->UnicodeMap[CodePoint];
   }
   return Result;
 }
 
 internal real32 GetHorizonatalAdvanceForPair(hha_font *Info, loaded_font *Font, uint32 DesiredPrevCodePoint, uint32 DesiredCodePoint)
 {
-  uint32 PrevCodePoint = GetClampCodePoint(Info, DesiredPrevCodePoint);
-  uint32 CodePoint = GetClampCodePoint(Info,DesiredCodePoint);
+  uint32 PrevGlyph = GetGlyphFromCodePoint(Info, Font, DesiredPrevCodePoint);
+  uint32 Glyph = GetGlyphFromCodePoint(Info,Font, DesiredCodePoint);
  
-  real32 Result = Font->HorizontalAdvance[PrevCodePoint*Info->CodePointCount + CodePoint];
+  real32 Result = Font->HorizontalAdvance[PrevGlyph*Info->GlyphCount + Glyph];
   return Result;
 }
 
 internal bitmap_id GetBitmapForGlyph(game_assets *Assets, hha_font *Info, loaded_font *Font, uint32 DesiredCodePoint)
 {
-  uint32 CodePoint = GetClampCodePoint(Info, DesiredCodePoint);
+  uint32 CodePoint = GetGlyphFromCodePoint(Info, Font, DesiredCodePoint);
   
-  bitmap_id Result = Font->CodePoints[CodePoint];
+  bitmap_id Result = Font->Glyphs[CodePoint].BitmapID;
   Result.Value += Font->BitmapIDOffset;
   return Result;
 }
 
 internal real32 GetLineAdvance(hha_font *Info)
 {
-  real32 Result = Info->LineAdvance;
+  real32 Result = Info->AscenderHeight + Info->DescenderHeight + Info->ExternalLeading;
+  return Result;
+}
+
+internal real32 GetBaseLineY(hha_font *Info)
+{
+  real32 Result = Info->AscenderHeight;
   return Result;
 }

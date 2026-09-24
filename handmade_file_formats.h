@@ -1,4 +1,5 @@
 #if !defined(HANDMADE_FILE_FORMATS_H)
+#define MAX_FONT_CODEPOINT_COUNT (0x10FFFF + 1)
 
 typedef uint8_t uint8;
 typedef uint16_t uint16;
@@ -68,6 +69,7 @@ struct hha_header
   uint64 AssetOffset;
   uint64 AssetTypeOffset;
 };
+#pragma pack(pop)
 
 struct sound_id
 {
@@ -112,10 +114,11 @@ struct hha_sound
 
 struct hha_font
 {
-  uint32 CodePointCount;
-  real32 LineAdvance;
-  //In the actual data there is BitmapID[],
-  //HorizontalAdavcen[]
+  uint32 GlyphCount;
+  uint32 OnePastHighestCodepoint;
+  real32 ExternalLeading;
+  real32 AscenderHeight;
+  real32 DescenderHeight;
 };
 
 struct hha_asset
@@ -138,8 +141,11 @@ struct hha_asset_type
   uint32 OnePastLastAssetIndex;
 };
 
-#pragma pack(pop)
-
+struct hha_font_glyph
+{
+  uint32 UnicodeCodePoint;
+  bitmap_id BitmapID;
+};
 
 #define HANDMADE_FILE_FORMATS_H
 #endif
