@@ -188,7 +188,7 @@ global_variable platform_api Platform;
 #define Align4(value) ((value + 3) & ~3)
 #define Align8(value) ((value + 7) & ~7)
 #define Align16(value) ((value + 15) & ~15)
-
+/*
 #if H_INTERNAL
 
 enum
@@ -209,14 +209,18 @@ typedef struct debug_cycle_counter
 extern struct game_memory *DebugGlobalMemory = 0;
 
 #if _MSC_VER
-#define BEGIN_TIMED_BLOCK(ID) uint64 StartCycleCount##ID = __rdtsc();
-#define END_TIMED_BLOCK(ID) DebugGlobalMemory->Counter[DebugCycleCounter_##ID].CycleCount += __rdtsc() - StartCycleCount##ID;  ++DebugGlobalMemory->Counter[DebugCycleCounter_##ID].HitCount;
+#define BEGIN_TIMED_BLOCK_(StartCycleCount) StartCycleCount = __rdtsc();
+#define BEGIN_TIMED_BLOCK(ID) uint64 StartCycleCount##ID; BEGIN_TIMED_BLOCK_(StartCycleCount##ID)
+#define END_TIMED_BLOCK_(StartCycleCount, ID) DebugGlobalMemory->Counter[DebugCycleCounter_##ID].CycleCount += __rdtsc() - StartCycleCount;  ++DebugGlobalMemory->Counter[DebugCycleCounter_##ID].HitCount;
+#define END_TIMED_BLOCK_(StartCycleCount, ID) DebugGlobalMemory->Counter[ID].CycleCount += __rdtsc() - StartCycleCount; ++DebugGlobalMemory->Counter[ID].HitCount;
+#define END_TIMED_BLOCK(ID) END_TIMED_BLOCK_(StartCycleCount##ID, DebugCycleCounter_##ID)
 #else
 #define BEGIN_TIMED_BLOCK(ID)
 #define END_TIMED_BLOCK(ID)
 #endif
-
 #endif
+*/
+
 
 #define Kilobytes(value) ((value)*1024LL)
 #define Megabytes(value) (Kilobytes(value)*1024LL)
@@ -467,10 +471,9 @@ struct game_memory
 
   platform_api PlatformAPI;
 
-#if H_INTERNAL
-  debug_cycle_counter Counter[DebugCycleCounter_Count];
-#endif
 };
+
+#include "handmade_debug.h"
 
 internal void InitializeArena(memory_arena *Arena, memory_index Size, void* Base)
 {
@@ -594,8 +597,6 @@ global_variable platform_add_entry *PlatformAddEntry;
 global_variable platform_complete_all_work *PlatformCompleteAllWork;
 global_variable debug_platform_read_entire_file *DEBUGReadEntireFile;
 */
-
-
 
 #define HANDMADE_H
 #endif

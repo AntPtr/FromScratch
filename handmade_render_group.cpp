@@ -324,7 +324,6 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 				loaded_bitmap *Texture, loaded_bitmap *NormalMap,
 				environment_map *Top, environment_map *Middle, environment_map *Bottom, real32 PixelsToMeter)
 {
-  BEGIN_TIMED_BLOCK(DrawRectangleSlowly);
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
 			    RoundReal32ToUInt32(255 * Color.r) << 16 |
 			    RoundReal32ToUInt32(255 * Color.g) << 8 |
@@ -503,13 +502,11 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
     }
     Row += Buffer->Pitch;
   }
-  END_TIMED_BLOCK(DrawRectangleSlowly);
 }
 
 internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
 				   loaded_bitmap *Texture, real32 PixelsToMeter, rectangle2i ClipRect, bool32 Even)
 {
-  BEGIN_TIMED_BLOCK(DrawRectangleQuickly);
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
 			    RoundReal32ToUInt32(255 * Color.r) << 16 |
 			    RoundReal32ToUInt32(255 * Color.g) << 8 |
@@ -833,7 +830,6 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
     }
     Row += RowAdvance;
   }
-  END_TIMED_BLOCK(DrawRectangleQuickly);
 }
 
 /*
@@ -1006,7 +1002,7 @@ inline void Orthographic(render_group *RenderGroup, int32 PixelWidth, int32 Pixe
 
 internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget, rectangle2i ClipRect, bool Even)
 {
-  BEGIN_TIMED_BLOCK(RenderGroupToOutput);
+  TIMED_BLOCK();
 
   real32 NullPixelsToMeters = 1.0f;
  for(uint32 BaseAdress = 0; BaseAdress < RenderGroup->PushBufferSize; )
@@ -1078,7 +1074,6 @@ internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *Outp
      InvalidDefaultCase;
    }  
  }
- END_TIMED_BLOCK(RenderGroupToOutput);
 }
 
 struct tile_render_work

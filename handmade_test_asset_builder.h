@@ -15,6 +15,8 @@
 #define Assert(Expr) if(!(Expr)) {*(int *)0=0;}
 #define global_variable static
 
+#define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
+
 enum asset_type
 {
   AssetType_Sound,

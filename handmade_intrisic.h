@@ -10,9 +10,22 @@ inline uint32 AtomicCompareExchangeUInt32(uint32 volatile *Value, uint32 New, ui
   return Result;
 }
 
+inline uint64 AtomicExchangeU64(uint64 volatile *Value, uint64 New)
+{
+  uint64 Result = _InterlockedExchange64((__int64 *)Value, New);
+  return Result;
+}
+
+
 inline uint32 AtomicAdd(uint32 volatile *Value, uint32 Added)
 {
   uint32 Result = _InterlockedExchangeAdd((long *)Value, Added) + Added;
+  return Result;
+}
+
+inline uint64 AtomicAddU64(uint64 volatile *Value, uint64 Added)
+{
+  uint64 Result = _InterlockedExchangeAdd64((__int64 *)Value, Added) + Added;
   return Result;
 }
 #else

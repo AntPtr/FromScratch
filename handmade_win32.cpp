@@ -758,6 +758,7 @@ inline void Win32DrawSoundBufferMarker(win32_offscreen_buffer *Backbuffer, win32
     Win32DebugDrawVertical(Backbuffer, X, Top, Bottom, Color);
 }
 
+#if 0
 internal void HandleDebugCycleCounters(game_memory *Memory)
 {
 #if H_INTERNAL
@@ -778,6 +779,7 @@ internal void HandleDebugCycleCounters(game_memory *Memory)
   }
 #endif
 }
+#endif
 
 #if 0
 internal void  Win32DebugSyncDisplay(win32_offscreen_buffer *Backbuffer, int MarkerCount, win32_debug_time_marker *Markers, int CurrentMarkerIndex, win32_sound_output *SoundOutput, real32 TargetSecondsPerFrame)
@@ -1652,7 +1654,7 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    
 	    char StrBuffer[256];
             sprintf_s(StrBuffer, "%.02fms/f - %dFPS\n", MSPerFrame, FPS);
-            //OutputDebugStringA(StrBuffer);
+            OutputDebugStringA(StrBuffer);
 	    
             game_input *Temp = NewInput;
             NewInput = OldInput;

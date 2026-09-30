@@ -442,12 +442,12 @@ struct loaded_font
 global_variable HDC GlobalFontDeviceContext = 0;
 global_variable VOID *GlobalFontBits = 0;
 
-internal loaded_font *LoadFont(char *FileName, char *FontName)
+internal loaded_font *LoadFont(char *FileName, char *FontName, int PixelHeight)
 {
   loaded_font *Result = (loaded_font *)malloc(sizeof(loaded_font));
   
   AddFontResourceExA(FileName, FR_PRIVATE, 0);
-  int Height = 128;
+  int Height = PixelHeight;
   Result->Win32Handle = CreateFontA(Height, 0, 0, 0, FW_DONTCARE,
 			   FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 			   OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -938,19 +938,32 @@ internal void WriteFont()
   game_assets Assets_;
   game_assets *Assets = &Assets_;
   Initialize(Assets);
-  
-  loaded_font *DebugFont = LoadFont( "c:/Windows/Fonts/arial.ttf", "Arial"); 
+
+  loaded_font *Fonts[] = {
+    {LoadFont( "c:/Windows/Fonts/arial.ttf", "Arial", 128)},
+    {LoadFont( "c:/Windows/Fonts/LiberationMono-Regular.ttf", "Liberation Mono", 20)},
+  };
   BeginAssetType(Assets, Asset_FontGlyph);
-  AddCharcterAsset(Assets, DebugFont, ' ');
-  for(uint32 Char = '!'; Char <= '~'; ++Char)
+  for(uint32 FontIndex = 0; FontIndex < ArrayCount(Fonts); ++FontIndex)
   {
-    AddCharcterAsset(Assets, DebugFont, Char);
+    loaded_font *Font = Fonts[FontIndex];
+    AddCharcterAsset(Assets, Font, ' ');
+    for(uint32 Char = '!'; Char <= '~'; ++Char)
+    {
+      AddCharcterAsset(Assets, Font, Char);
+    }
+    AddCharcterAsset(Assets, Font, 0x706B);
   }
-  AddCharcterAsset(Assets, DebugFont, 0x706B);
   EndAssetType(Assets);
 
   BeginAssetType(Assets, Asset_Fonts);
-  AddFontAsset(Assets, DebugFont);
+
+  AddFontAsset(Assets, Fonts[0]);
+  AddTag(Assets, Tag_FontType, FontType_Default);
+
+  AddFontAsset(Assets, Fonts[1]);
+  AddTag(Assets, Tag_FontType, FontType_Debug);
+  
   EndAssetType(Assets);
   
 

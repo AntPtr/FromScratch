@@ -15,6 +15,7 @@
 #ifndef HANDMADE_SLOW
 #define HANDMADE_SLOW 1
 #endif
+internal void OverlayCycleCounters(game_memory *Memory);
 
 internal void SomeGradient(game_offscreen_buffer *Buffer ,int XOffset,int YOffset)
 {
@@ -565,7 +566,8 @@ internal void DEBUGReset(game_assets *Assets, uint32 Width, uint32 Height)
 {
   asset_vector MatchVector = {};
   asset_vector WeightVector = {};
-
+  MatchVector.E[Tag_FontType] = (real32)FontType_Debug;
+  WeightVector.E[Tag_FontType] = 1.0f;
   FontID = BestMatchFont(Assets, Asset_Fonts, &MatchVector, &WeightVector);
   FontScale = 1.0f;
   hha_font *Info = GetFontInfo(Assets, FontID);
@@ -623,39 +625,6 @@ internal void DEBUGTextLine(char *String, v4 Color = v4{1.0, 1.0, 1.0, 1.0})
   }
 }
 
-internal void OverlayCycleCounters(game_memory *Memory)
-{
-#if H_INTERNAL
-  //  DEBUGTextLine("DEBUG CYCLE COUNT:\n");
-  DEBUGTextLine("/", v4{0.4f, 0.0f, 0.0f, 1.0f});
-  DEBUGTextLine("Ciao Roxie", v4{0.024f, 0.4f, 0.169f, 1.0f});
-
-  char *NameTable[] = {
-    "GameUpdateAndRedner",
-    "RenderGroupToOutput",
-    "DrawRectangleSlowly",
-    "ProcessPixel",
-    "DrawRectangleQuickly",
-  };
-  
-  for(int CounterIndex = 0; CounterIndex < ArrayCount(Memory->Counter); ++CounterIndex)
-  {
-    debug_cycle_counter *Counter = Memory->Counter + CounterIndex;
-    if(Counter->HitCount)
-    {
-#if 0     
-      char TextBuffer[256];
-
-      sprintf_s(TextBuffer, " %d: %I64ucy %uh  %I64ucy/h\n", CounterIndex, Counter->CycleCount, Counter->HitCount, Counter->CycleCount / Counter->HitCount);
-      OutputDebugStringA(TextBuffer);
-      Counter->HitCount = 0;
-      Counter->CycleCount = 0;
-#endif
-      DEBUGTextLine(NameTable[CounterIndex]);
-    }
-  }
-#endif
-}
 /*
 internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName, int32 AlignX, int32 TopDownAlignY)
 {
@@ -676,11 +645,7 @@ extern "C"
 #endif
 GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
-#if H_INTERNAL
-  DebugGlobalMemory = Memory;
-#endif
   Platform = Memory->PlatformAPI;
-  BEGIN_TIMED_BLOCK(GameUpdateAndRender);
   // Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
   //Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) == (ArrayCount(Input->Controllers[0].Buttons)));
 
@@ -1606,8 +1571,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     TiledRenderGroupToOutput(TranState->HighPriorityQueue, DEBUGRenderGroup, DrawBuffer);
     FinishRenderGroup(DEBUGRenderGroup);
   }
-  
-  END_TIMED_BLOCK(GameUpdateAndRender);
 }
 
 
@@ -1620,3 +1583,33 @@ GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
   transient_state* TranState = (transient_state*)Memory->TransientStorage;
   OutputPlaySound(&GameState->AudioState, SoundBuffer, TranState->Assets, &TranState->TranArena);
 }
+
+debug_record DebugRecordArray[__COUNTER__];
+
+#include <stdio.h>
+internal void OverlayCycleCounters(game_memory *Memory)
+{
+#if H_INTERNAL
+  DEBUGTextLine("DEBUG CYCLE COUNT:\n");
+  //DEBUGTextLine("/", v4{0.4f, 0.0f, 0.0f, 1.0f});
+  //DEBUGTextLine("Ciao Roxie", v4{0.024f, 0.4f, 0.169f, 1.0f});
+
+  for(int CounterIndex = 0; CounterIndex < ArrayCount(DebugRecords_Main); ++CounterIndex)
+  {
+    debug_record *Counter = DebugRecords_Main + CounterIndex;
+    uint64 HitCount_CycleCount = AtomicExchangeU64(&Counter->HitCount_CycleCount, 0);
+    uint32 HitCount = (uint32)(HitCount_CycleCount >> 32);
+    uint32 CycleCount = (uint32)(HitCount_CycleCount & 0xFFFFFFFF);
+    
+    if(HitCount)
+    {
+      char TextBuffer[256];
+      _snprintf_s(TextBuffer, sizeof(TextBuffer), "%s(%d): %ucy %uh %ucy/h", Counter->FunctionName, Counter->LineNumber,
+		  CycleCount, HitCount, CycleCount / HitCount);
+      DEBUGTextLine(TextBuffer);
+    }
+  }
+#endif
+}
+
+
