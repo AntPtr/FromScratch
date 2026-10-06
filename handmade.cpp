@@ -15,7 +15,6 @@
 #ifndef HANDMADE_SLOW
 #define HANDMADE_SLOW 1
 #endif
-internal void OverlayCycleCounters(game_memory *Memory);
 
 internal void SomeGradient(game_offscreen_buffer *Buffer ,int XOffset,int YOffset)
 {
@@ -555,90 +554,6 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   }
   return Result;
 }
-
-global_variable render_group *DEBUGRenderGroup;
-global_variable real32 AtY;
-global_variable real32 LeftEdge;
-global_variable real32 FontScale;
-global_variable font_id FontID;
-
-internal void DEBUGReset(game_assets *Assets, uint32 Width, uint32 Height)
-{
-  asset_vector MatchVector = {};
-  asset_vector WeightVector = {};
-  MatchVector.E[Tag_FontType] = (real32)FontType_Debug;
-  WeightVector.E[Tag_FontType] = 1.0f;
-  FontID = BestMatchFont(Assets, Asset_Fonts, &MatchVector, &WeightVector);
-  FontScale = 1.0f;
-  hha_font *Info = GetFontInfo(Assets, FontID);
-  AtY = 0.5f*Height - FontScale*GetBaseLineY(Info);
-  LeftEdge = -0.5f*Width; 
-  Orthographic(DEBUGRenderGroup, Width, Height, 1.0f);  
-}
-
-internal void DEBUGTextLine(char *String, v4 Color = v4{1.0, 1.0, 1.0, 1.0})
-{
-  if(DEBUGRenderGroup)
-  {
-    render_group *RenderGroup = DEBUGRenderGroup;
-    loaded_font *Font = PushFont(RenderGroup, FontID);
-    if(Font)
-    {
-      hha_font *Info = GetFontInfo(RenderGroup->Assets, FontID);
-      asset *DebugAsset = RenderGroup->Assets->Assets + FontID.Value;
-      real32 AtX = LeftEdge;
-      uint32 PrevCodePoint = 0;
-      if(String[0] == '/')
-      {
-	uint32 CodePoint = 0x706B;
-	
-	real32 AdvanceX = GetHorizonatalAdvanceForPair(Info, Font, PrevCodePoint, CodePoint);
-	AtX += AdvanceX*FontScale;
-	bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
-	hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
-	//CharDim = FontScale*(real32)InfoBitmap->Dim[0];
-	PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale*(real32)InfoBitmap->Dim[1], Color);  
-	PrevCodePoint = CodePoint;
-      }
-      else
-      {
-	for(char *At = String; *At; ++At)
-        {
-	  uint32 CodePoint = *At;
-	
-	  //real32 CharDim = 10.0f;
-	  real32 AdvanceX = GetHorizonatalAdvanceForPair(Info, Font, PrevCodePoint, CodePoint);
-	  AtX += AdvanceX*FontScale;
-	  if(CodePoint !=  ' ')
-	  {
-	    bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
-	    hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
-	    //CharDim = FontScale*(real32)InfoBitmap->Dim[0];
-	    PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, FontScale*(real32)InfoBitmap->Dim[1], Color);
-	  }
-	  PrevCodePoint = CodePoint;
-	}
-      }
-      
-      AtY -= GetLineAdvance(Info)*FontScale;
-    }
-  }
-}
-
-/*
-internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName, int32 AlignX, int32 TopDownAlignY)
-{
-loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
-  *Bitmap = DEBUGLoadBMP(FileName, AlignX, TopDownAlignY);
-  return Bitmap;
-}
-*/
-/*internal loaded_bitmap *DEBUGAllocateLoadBMP(memory_arena *Arena, char *FileName)
-{
-  loaded_bitmap *Bitmap = PushStruct(Arena, loaded_bitmap);
-  *Bitmap = DEBUGLoadBMP(FileName);
-  return Bitmap;
-  }*/
 
 #if defined __cplusplus
 extern "C"
@@ -1563,11 +1478,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   CheckArena(&GameState->WorldArena);
   CheckArena(&TranState->TranArena);
-
-  OverlayCycleCounters(Memory);
-
+  
   if(DEBUGRenderGroup)
   {
+    DEBUGOverlay(Memory);
     TiledRenderGroupToOutput(TranState->HighPriorityQueue, DEBUGRenderGroup, DrawBuffer);
     FinishRenderGroup(DEBUGRenderGroup);
   }
@@ -1584,32 +1498,5 @@ GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
   OutputPlaySound(&GameState->AudioState, SoundBuffer, TranState->Assets, &TranState->TranArena);
 }
 
-debug_record DebugRecordArray[__COUNTER__];
-
-#include <stdio.h>
-internal void OverlayCycleCounters(game_memory *Memory)
-{
-#if H_INTERNAL
-  DEBUGTextLine("DEBUG CYCLE COUNT:\n");
-  //DEBUGTextLine("/", v4{0.4f, 0.0f, 0.0f, 1.0f});
-  //DEBUGTextLine("Ciao Roxie", v4{0.024f, 0.4f, 0.169f, 1.0f});
-
-  for(int CounterIndex = 0; CounterIndex < ArrayCount(DebugRecords_Main); ++CounterIndex)
-  {
-    debug_record *Counter = DebugRecords_Main + CounterIndex;
-    uint64 HitCount_CycleCount = AtomicExchangeU64(&Counter->HitCount_CycleCount, 0);
-    uint32 HitCount = (uint32)(HitCount_CycleCount >> 32);
-    uint32 CycleCount = (uint32)(HitCount_CycleCount & 0xFFFFFFFF);
-    
-    if(HitCount)
-    {
-      char TextBuffer[256];
-      _snprintf_s(TextBuffer, sizeof(TextBuffer), "%s(%d): %ucy %uh %ucy/h", Counter->FunctionName, Counter->LineNumber,
-		  CycleCount, HitCount, CycleCount / HitCount);
-      DEBUGTextLine(TextBuffer);
-    }
-  }
-#endif
-}
-
+#include "handmade_debug.cpp"
 

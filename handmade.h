@@ -188,27 +188,10 @@ global_variable platform_api Platform;
 #define Align4(value) ((value + 3) & ~3)
 #define Align8(value) ((value + 7) & ~7)
 #define Align16(value) ((value + 15) & ~15)
-/*
+
 #if H_INTERNAL
-
-enum
-{
-  DebugCycleCounter_GameUpdateAndRender,
-  DebugCycleCounter_RenderGroupToOutput,
-  DebugCycleCounter_DrawRectangleSlowly,
-  DebugCycleCounter_DrawRectangleQuickly,
-  DebugCycleCounter_Count,
-};
-
-typedef struct debug_cycle_counter
-{
-  uint64 CycleCount;
-  uint32 HitCount;
-} debug_cycle_counter;
-
-extern struct game_memory *DebugGlobalMemory = 0;
-
 #if _MSC_VER
+#if 0
 #define BEGIN_TIMED_BLOCK_(StartCycleCount) StartCycleCount = __rdtsc();
 #define BEGIN_TIMED_BLOCK(ID) uint64 StartCycleCount##ID; BEGIN_TIMED_BLOCK_(StartCycleCount##ID)
 #define END_TIMED_BLOCK_(StartCycleCount, ID) DebugGlobalMemory->Counter[DebugCycleCounter_##ID].CycleCount += __rdtsc() - StartCycleCount;  ++DebugGlobalMemory->Counter[DebugCycleCounter_##ID].HitCount;
@@ -219,7 +202,8 @@ extern struct game_memory *DebugGlobalMemory = 0;
 #define END_TIMED_BLOCK(ID)
 #endif
 #endif
-*/
+#endif
+
 
 
 #define Kilobytes(value) ((value)*1024LL)
@@ -466,12 +450,30 @@ struct game_memory
   uint64 TransientStorageSize;
   void *TransientStorage;
 
+  uint64 DebugStorageSize;
+  void *DebugStorage;
+
   platform_work_queue *HighPriorityQueue;
   platform_work_queue *LowPriorityQueue;
 
   platform_api PlatformAPI;
 
 };
+
+struct debug_timestamp
+{
+  char *Name;
+  real32 Seconds;
+};
+
+struct debug_frame_timestamp
+{
+  uint32 TimestampCount;
+  debug_timestamp Timestamps[64];
+};
+
+#define DEBUG_FRAME_END(name) void name(game_memory *Memory, debug_frame_timestamp *Info)
+typedef DEBUG_FRAME_END(debug_frame_end);
 
 #include "handmade_debug.h"
 

@@ -18,7 +18,8 @@ struct win32_game_code
   //Must check before calling!
   game_update_and_render *UpdateAndRender;
   game_get_sound_samples *GetSoundSamples;
-
+  debug_frame_end *DEBUGFrameEnd;
+  
   FILETIME DLLLastWriteTime;
     
   bool32 IsValid;
