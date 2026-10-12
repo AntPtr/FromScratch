@@ -594,11 +594,82 @@ internal void AddCollisionRule(game_state *GameState, uint32 StorageIndexA, uint
 
 internal void ClearCollisionRulesFor(game_state *GameState, uint32 StorageIndex);
 
-/*
-global_variable platform_add_entry *PlatformAddEntry;
-global_variable platform_complete_all_work *PlatformCompleteAllWork;
-global_variable debug_platform_read_entire_file *DEBUGReadEntireFile;
-*/
+#if COMPILER_MSVC
+
+struct debug_record
+{
+  char *Filename;
+  char *FunctionName;
+  uint32 LineNumber;
+  uint32 Reserved;
+  uint64 HitCount_CycleCount;
+};
+
+enum debug_event_type
+{
+  DebugEvent_BeginBlock,
+  DebugEvent_EndBlock,
+};
+
+struct debug_event
+{
+  uint64 Clock;
+  uint16 TheardIndex;
+  uint16 CoreIndex;
+  uint16 DebugRecordIndex;
+  uint8 TranslationUnit;
+  uint8 Type;
+};
+
+#define MAX_DEBUG_EVENT_COOUNT (16*65536)
+#define MAX_DEBUG_RECORD_COUNT 65536
+struct debug_table
+{
+  uint32 CurrentEventArrayIndex;
+  uint64 volatile EventArrayIndex_EventIndex;
+  debug_event Events[2][MAX_DEBUG_EVENT_COOUNT];
+  debug_record Records[3][MAX_DEBUG_EVENT_COOUNT];
+};
+
+extern debug_table GlobalDebugTable;
+
+
+inline void RecordDebugEvent(int RecordIndex, debug_event_type EventType)
+{
+  uint64 ArrayIndex_EventIndex = AtomicAddU64(&GlobalDebugTable.EventArrayIndex_EventIndex, 1);
+  uint32 EventIndex = (ArrayIndex_EventIndex & 0xFFFFFFFF);
+  Assert(EventIndex < MAX_DEBUG_EVENT_COOUNT);
+  debug_event *Event = GlobalDebugTable.Events[ArrayIndex_EventIndex >> 32] + EventIndex;
+  Event->Clock = __rdtsc();
+  Event->TheardIndex = (uint16)GetTheardID();
+  Event->CoreIndex = 0;
+  Event->DebugRecordIndex = (uint16)RecordIndex;
+  Event->TranslationUnit = TRANSLATION_UNIT_INDEX;
+  Event->Type = (uint8)EventType;
+}
+
+struct timed_block
+{
+  int Counter;
+  
+  timed_block(int CounterInit, char *Filename, int LineNumber, char *FunctionName, int HitCountInit = 1)
+  {
+    Counter = CounterInit;
+    debug_record *Record = GlobalDebugTable.Records[TRANSLATION_UNIT_INDEX] + Counter;
+    Record->Filename = Filename;
+    Record->LineNumber = LineNumber;
+    Record->FunctionName = FunctionName;
+
+    RecordDebugEvent(Counter, DebugEvent_BeginBlock);
+  }
+  
+  ~timed_block()
+  {
+    RecordDebugEvent(Counter, DebugEvent_EndBlock);
+  }
+  
+};
+#endif
 
 #define HANDMADE_H
 #endif

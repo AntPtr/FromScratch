@@ -28,6 +28,21 @@ inline uint64 AtomicAddU64(uint64 volatile *Value, uint64 Added)
   uint64 Result = _InterlockedExchangeAdd64((__int64 *)Value, Added) + Added;
   return Result;
 }
+
+inline uint64 AtomicAddU32(uint32 volatile *Value, uint32 Added)
+{
+  long Result = _InterlockedExchangeAdd((long *)Value, Added) + Added;
+  return Result;
+}
+
+inline uint32 GetTheardID()
+{
+  uint8 *TheardStorage = (uint8 *)__readgsqword(0x30);
+  uint32 TheardID = *(uint32 *)(TheardStorage + 0x48);
+
+  return TheardID;
+}
+
 #else
 #define CompletePreviousWriteBeforeFutureWrites
 #endif
