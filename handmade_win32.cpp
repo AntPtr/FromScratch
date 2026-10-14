@@ -1181,12 +1181,9 @@ internal void Win32MakeQueue(platform_work_queue *Queue, uint32 TheardCount)
   } 
 }
 
-inline void Win32RecordTimeStamp(debug_frame_timestamp *Info, char *Name, real32 Seconds)
-{
-  debug_timestamp *Timestamp = Info->Timestamps + Info->TimestampCount++;
-  Timestamp->Name = Name;
-  Timestamp->Seconds = Seconds;
-}
+
+global_variable debug_table GlobalDebugTable_;
+debug_table *GlobalDebugTable = &GlobalDebugTable_;
 
 int WINAPI wWinMain(HINSTANCE Instance,
 		    HINSTANCE PrevInstance,
@@ -1374,22 +1371,33 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	
         while(Running)
         {
-	  debug_frame_timestamp FrameEndInfo = {};
-	    
+	  FRAME_MARKER();
+	  //
+	  //
+	  //
+	  //  
 	  FILETIME NewDLLWriteTime = Win32GetLastWriteTime(SourceGameCodeDLLFullPath);
+
+	  BEGIN_BLOCK(ExecutableReady);
 	  NewInput->dtForFrame = TargetSecPFrame;
 	  NewInput->ExcutableReloaded = false;
 
 	  if(CompareFileTime(&NewDLLWriteTime, &Game.DLLLastWriteTime) != 0)
 	  {
 	    Game.DLLLastWriteTime = NewDLLWriteTime;
+
+	    Win32CompleteAllWork(&HighPriorityQueue);
+	    Win32CompleteAllWork(&LowPriorityQueue);
+	    GlobalDebugTable = &GlobalDebugTable_;
+
 	    Win32UnloadGameCode(&Game);
 	    Game = Win32LoadGameCode(SourceGameCodeDLLFullPath, TempGameCodeDLLFullPath, LockFullPath);
 	    NewInput->ExcutableReloaded = true;
 	  }
+	  END_BLOCK(ExecutableReady);
 
-	  Win32RecordTimeStamp(&FrameEndInfo, "ExecutableReady", Win32GetSecondsElapsed(LastCounter, Win32GetClock()));
-	  
+
+	  BEGIN_BLOCK(InputProcessed);
 	  game_controller_input *NewKeyBoardController = GetController(NewInput, 0);
 	  game_controller_input *OldKeyBoardController = GetController(OldInput, 0);
 	  
@@ -1497,9 +1505,9 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	        NewController->IsConnected = false;
               }
             }
-	    
-	    Win32RecordTimeStamp(&FrameEndInfo, "InputProcessed", Win32GetSecondsElapsed(LastCounter, Win32GetClock()));
-	    
+	    END_BLOCK(InputProcessed);
+
+	    BEGIN_BLOCK(GameUpdated);
             game_offscreen_buffer Buffer = {};
             Buffer.Memory = GlobalBackBuffer.Memory;
             Buffer.Width = GlobalBackBuffer.Width;
@@ -1521,9 +1529,10 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	      Game.UpdateAndRender(&GameMemory, NewInput , &Buffer);
 	    }
 
-	    Win32RecordTimeStamp(&FrameEndInfo, "GameUpdated", Win32GetSecondsElapsed(LastCounter, Win32GetClock()));
+	    END_BLOCK(GameUpdated);
 	    
-	    
+
+	    BEGIN_BLOCK(AudioUpdated);
 	    LARGE_INTEGER AudioWallClock = Win32GetClock();
 	    real32 FromBeginToAudioSeconds = Win32GetSecondsElapsed(FlipWallClock, AudioWallClock);
 
@@ -1611,8 +1620,9 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	      SoundIsValid = false;
 	    }
 
-	    Win32RecordTimeStamp(&FrameEndInfo, "AudioUpdated", Win32GetSecondsElapsed(LastCounter, Win32GetClock()));
-	   
+	    END_BLOCK(AudioUpdated);
+
+	    BEGIN_BLOCK(FrameWaiting);
             LARGE_INTEGER WorkCounter = Win32GetClock();
 	    real32 WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
 	    
@@ -1645,8 +1655,9 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    {
 	    }
 
-	    Win32RecordTimeStamp(&FrameEndInfo, "FrameWaitComplete", Win32GetSecondsElapsed(LastCounter, Win32GetClock()));
+	    END_BLOCK(FrameWaiting);
 
+	    BEGIN_BLOCK(EndOfFrame);
 	    win32_window_dimension Dimension = GetWindowDimension(Window);
 	    HDC DeviceContex = GetDC(Window);
 
@@ -1654,33 +1665,25 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    ReleaseDC(Window, DeviceContex);
 
 	    FlipWallClock = Win32GetClock();
-#if 0
-	    real32 MSPerFrame = 1000.0f*Win32GetSecondsElapsed(LastCounter, EndCounter);
-	    int64 CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
-	    
-	    int32 FPS = (int32)(GlobalPerfCountFrequency / CounterElapsed);
-	    
-	    char StrBuffer[256];
-            sprintf_s(StrBuffer, "%.02fms/f - %dFPS\n", MSPerFrame, FPS);
-            OutputDebugStringA(StrBuffer);
-#endif
-            game_input *Temp = NewInput;
+
+	    game_input *Temp = NewInput;
             NewInput = OldInput;
             OldInput = Temp;
 	    
 	    LARGE_INTEGER EndCounter = Win32GetClock();
 	    LastCounter = EndCounter;
-	   
+	    END_BLOCK(EndOfFrame);
+ 	   
 #if H_INTERNAL
-
-	    Win32RecordTimeStamp(&FrameEndInfo, "EndOfFrame", Win32GetSecondsElapsed(LastCounter, Win32GetClock()));
-
+	    
 	    int64 EndCycleCount = __rdtsc();
 	    LastCycleCount = EndCycleCount;
 	    if(Game.DEBUGFrameEnd)
 	    {
-	      Game.DEBUGFrameEnd(&GameMemory, &FrameEndInfo);
+	      GlobalDebugTable = Game.DEBUGFrameEnd(&GameMemory);
+	      GlobalDebugTable->RecordCount[TRANSLATION_UNIT_INDEX] = __COUNTER__;
 	    }
+	    GlobalDebugTable_.EventArrayIndex_EventIndex = 0;
 #endif
 	  }
 	}

@@ -263,6 +263,8 @@ inline loaded_font *PushFont(render_group *Group, font_id FontID)
 
 inline void PushRect(render_group *Group, v3 Offset, v2 Dim, v4 Color)
 {
+  TIMED_FUNCTION();
+
   v3 P = Offset - V3(0.5f*Dim, 0);
   entity_basis_result Basis = GetRenderEntityBasisP(&Group->Transform, P);
   if(Basis.Valid)
@@ -507,6 +509,8 @@ internal void DrawRectangleSlow(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 Y
 internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v2 YAxis, v4 Color,
 				   loaded_bitmap *Texture, real32 PixelsToMeter, rectangle2i ClipRect, bool32 Even)
 {
+  TIMED_FUNCTION();
+
   uint32 Color32 = (uint32)(RoundReal32ToUInt32(255 * Color.a) << 24 |
 			    RoundReal32ToUInt32(255 * Color.r) << 16 |
 			    RoundReal32ToUInt32(255 * Color.g) << 8 |
@@ -1002,7 +1006,7 @@ inline void Orthographic(render_group *RenderGroup, int32 PixelWidth, int32 Pixe
 
 internal void RenderGroupToOutput(render_group *RenderGroup, loaded_bitmap *OutputTarget, rectangle2i ClipRect, bool Even)
 {
-  TIMED_BLOCK();
+  TIMED_FUNCTION();
 
   real32 NullPixelsToMeters = 1.0f;
  for(uint32 BaseAdress = 0; BaseAdress < RenderGroup->PushBufferSize; )
@@ -1110,6 +1114,8 @@ internal PLATFORM_WORK_QUEUE_CALLBACK(DoTiledRenderWork)
 
 internal void TiledRenderGroupToOutput(platform_work_queue *RenderQueue, render_group *RenderGroup, loaded_bitmap *OutputTarget)
 {
+  TIMED_FUNCTION();
+
   int const TileCountX = 4;
   int const TileCountY = 4;
 
