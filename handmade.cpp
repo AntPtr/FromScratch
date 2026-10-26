@@ -1481,7 +1481,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   
   if(DEBUGRenderGroup)
   {
-    DEBUGOverlay(Memory);
+    DEBUGOverlay(Memory, Input);
     TiledRenderGroupToOutput(TranState->HighPriorityQueue, DEBUGRenderGroup, DrawBuffer);
     FinishRenderGroup(DEBUGRenderGroup);
   }

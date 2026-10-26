@@ -1371,7 +1371,6 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	
         while(Running)
         {
-	  FRAME_MARKER();
 	  //
 	  //
 	  //
@@ -1422,14 +1421,25 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	    POINT MouseP;
 	    GetCursorPos(&MouseP);
 	    ScreenToClient(Window, &MouseP);
-	    NewInput->MouseX = MouseP.x;
-            NewInput->MouseY = MouseP.y;
+	    NewInput->MouseX = (-0.5f*(real32)GlobalBackBuffer.Width + 0.5f) + MouseP.x;
+            NewInput->MouseY = (0.5f*(real32)GlobalBackBuffer.Height - 0.5f) - MouseP.y;
             NewInput->MouseZ = 0; // TODO: Mousewheel?
-	    Win32ProcessKeyBoardButtons(&NewInput->MouseButtons[0], GetKeyState(VK_LBUTTON) & 1 << 15);
-	    Win32ProcessKeyBoardButtons(&NewInput->MouseButtons[1], GetKeyState(VK_MBUTTON) & 1 << 15);
-	    Win32ProcessKeyBoardButtons(&NewInput->MouseButtons[2], GetKeyState(VK_RBUTTON) & 1 << 15);
-	    Win32ProcessKeyBoardButtons(&NewInput->MouseButtons[3], GetKeyState(VK_XBUTTON1) & 1 << 15);
-	    Win32ProcessKeyBoardButtons(&NewInput->MouseButtons[4], GetKeyState(VK_XBUTTON2) & 1 << 15);
+
+	    DWORD WinButtonID[] =
+	    {
+	      VK_LBUTTON,
+	      VK_MBUTTON,
+	      VK_RBUTTON,
+	      VK_XBUTTON1,
+	      VK_XBUTTON2,	      
+	    };
+
+	    for(uint32 ButtonIndex = 0; ButtonIndex < PlatformMouseButton_Count; ++ButtonIndex)
+	    {
+	      NewInput->MouseButtons[ButtonIndex] = OldInput->MouseButtons[ButtonIndex];
+	      NewInput->MouseButtons[ButtonIndex].HalfTransitionCount = 0;
+	      Win32ProcessKeyBoardButtons(&NewInput->MouseButtons[ButtonIndex], GetKeyState(WinButtonID[ButtonIndex]) & 1 << 15);
+	    }
 
 	    DWORD MaxControllerCount = XUSER_MAX_COUNT;
             if(MaxControllerCount > (ArrayCount(NewInput->Controllers) - 1))
@@ -1670,8 +1680,6 @@ int WINAPI wWinMain(HINSTANCE Instance,
             NewInput = OldInput;
             OldInput = Temp;
 	    
-	    LARGE_INTEGER EndCounter = Win32GetClock();
-	    LastCounter = EndCounter;
 	    END_BLOCK(EndOfFrame);
  	   
 #if H_INTERNAL
@@ -1683,7 +1691,14 @@ int WINAPI wWinMain(HINSTANCE Instance,
 	      GlobalDebugTable = Game.DEBUGFrameEnd(&GameMemory);
 	      GlobalDebugTable->RecordCount[TRANSLATION_UNIT_INDEX] = __COUNTER__;
 	    }
-	    GlobalDebugTable_.EventArrayIndex_EventIndex = 0;
+	    //GlobalDebugTable_.EventArrayIndex_EventIndex = 0;
+
+	    LARGE_INTEGER EndCounter = Win32GetClock();
+	
+	    FRAME_MARKER(Win32GetSecondsElapsed(LastCounter, EndCounter));
+
+	    LastCounter = EndCounter;
+
 #endif
 	  }
 	}

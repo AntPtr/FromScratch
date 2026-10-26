@@ -292,10 +292,21 @@ struct game_controller_input
   };
 };
 
+enum game_input_mouse_button
+{
+  PlatformMouseButton_Left,
+  PlatformMouseButton_Middle,
+  PlatformMouseButton_Rigth,
+  PlatformMouseButton_Extended0,
+  PlatformMouseButton_Extended1,
+
+  PlatformMouseButton_Count,
+};
+
 struct game_input
 {
-  game_button_state MouseButtons[5];
-  int32 MouseX, MouseY, MouseZ;
+  game_button_state MouseButtons[PlatformMouseButton_Count];
+  real32 MouseX, MouseY, MouseZ;
   
   real32 dtForFrame;
   
@@ -303,6 +314,12 @@ struct game_input
 
   bool32 ExcutableReloaded;
 };
+
+inline bool32 WasPressed(game_button_state State)
+{
+  bool32 Result = ((State.HalfTransitionCount > 1) || (State.HalfTransitionCount == 1) && (State.EndedDown));
+  return Result;
+}
 
 inline game_controller_input *GetController(game_input *Input, int ControllerIndex)
 {
@@ -464,7 +481,6 @@ struct debug_table;
 #define DEBUG_FRAME_END(name) debug_table *name(game_memory *Memory)
 typedef DEBUG_FRAME_END(debug_frame_end);
 
-#include "handmade_debug.h"
 
 internal void InitializeArena(memory_arena *Arena, memory_index Size, void* Base)
 {
@@ -549,6 +565,7 @@ inline void EndTemporaryMemory(temporary_memory TempMem)
   --Arena->TempCount;
 }
 
+
 inline void CheckArena(memory_arena *Arena)
 {
   Assert(Arena->TempCount == 0);
@@ -601,17 +618,27 @@ enum debug_event_type
   DebugEvent_EndBlock,
 };
 
+struct theardid_coreindex
+{
+  uint16 TheardIndex;
+  uint16 CoreIndex;
+};
+
 struct debug_event
 {
   uint64 Clock;
-  uint16 TheardIndex;
-  uint16 CoreIndex;
+  union
+  {
+    theardid_coreindex TC;
+    real32 SecondsElapsed;
+  };
   uint16 DebugRecordIndex;
   uint8 TranslationUnit;
   uint8 Type;
 };
 
-#define MAX_DEBUG_EVENT_COOUNT (16*65536)
+#define MAX_DEBUG_EVENT_ARRAY_COUNT 8
+#define MAX_DEBUG_EVENT_COUNT (16*65536)
 #define MAX_DEBUG_RECORD_COUNT 65536
 #define MAX_TRANSLATION_UNITS 3
 struct debug_table
@@ -619,33 +646,50 @@ struct debug_table
   uint32 CurrentEventArrayIndex;
   uint64 volatile EventArrayIndex_EventIndex;
   uint32 RecordCount[MAX_TRANSLATION_UNITS];
-  debug_event Events[64][MAX_DEBUG_EVENT_COOUNT];
-  debug_record Records[MAX_TRANSLATION_UNITS][MAX_DEBUG_EVENT_COOUNT];
+  uint32 EventCount[MAX_DEBUG_EVENT_ARRAY_COUNT];
+  debug_event Events[MAX_DEBUG_EVENT_ARRAY_COUNT][MAX_DEBUG_EVENT_COUNT];
+  debug_record Records[MAX_TRANSLATION_UNITS][MAX_DEBUG_EVENT_COUNT];
 };
 
 extern debug_table *GlobalDebugTable;
 
-inline void RecordDebugEvent(int RecordIndex, debug_event_type EventType)
-{
-  uint64 ArrayIndex_EventIndex = AtomicAddU64(&GlobalDebugTable->EventArrayIndex_EventIndex, 1);
-  uint32 EventIndex = (ArrayIndex_EventIndex & 0xFFFFFFFF);
-  Assert(EventIndex < MAX_DEBUG_EVENT_COOUNT);
-  debug_event *Event = GlobalDebugTable->Events[ArrayIndex_EventIndex >> 32] + EventIndex;
-  Event->Clock = __rdtsc();
-  Event->TheardIndex = (uint16)GetTheardID();
-  Event->CoreIndex = 0;
-  Event->DebugRecordIndex = (uint16)RecordIndex;
-  Event->TranslationUnit = TRANSLATION_UNIT_INDEX;
-  Event->Type = (uint8)EventType;
-}
 
-#define FRAME_MARKER()							\
-  {int Counter = __COUNTER__;						\
-  RecordDebugEvent(Counter, DebugEvent_FrameMarker);			\
+#define RecordCommonEvent(RecordIndex, EventType)			\
+  uint64 ArrayIndex_EventIndex = AtomicAddU64(&GlobalDebugTable->EventArrayIndex_EventIndex, 1); \
+  uint32 EventIndex = (ArrayIndex_EventIndex & 0xFFFFFFFF);		\
+  Assert(EventIndex < MAX_DEBUG_EVENT_COUNT);				\
+  debug_event *Event = GlobalDebugTable->Events[ArrayIndex_EventIndex >> 32] + EventIndex; \
+  Event->Clock = __rdtsc();						\
+  Event->DebugRecordIndex = (uint16)RecordIndex;			\
+  Event->TranslationUnit = TRANSLATION_UNIT_INDEX;			\
+  Event->Type = (uint8)EventType;														
+
+
+//Maybe replace this traslation units array with an hashtable, it's kinda janky
+//but it works for now
+#define RecordDebugEvent(RecordIndex, EventType) \
+{ \
+    RecordCommonEvent(RecordIndex, EventType); \
+    Event->TC.TheardIndex = (uint16)GetTheardID(); \
+    Event->TC.CoreIndex = 0; \
+}									
+
+
+#define FRAME_MARKER(ElapsedSeconds)					\
+{									\
+  int Counter = __COUNTER__;						\
+  RecordCommonEvent(Counter, DebugEvent_FrameMarker);			\
+  Event->SecondsElapsed = ElapsedSeconds;				\
   debug_record *Record = GlobalDebugTable->Records[TRANSLATION_UNIT_INDEX] + Counter; \
   Record->BlockName = "Frame Marker";					\
   Record->Filename = __FILE__;						\
-  Record->LineNumber = __LINE__;}					\
+  Record->LineNumber = __LINE__;					\
+}									
+
+
+#if HANDMADE_PROFILE
+
+
 
 #define TIMED_BLOCK__(BlockName, Number, ...) timed_block TimedBlock##Number(__COUNTER__, __FILE__, __LINE__, BlockName, ##__VA_ARGS__)
 #define TIMED_BLOCK_(BlockName, Number, ...) TIMED_BLOCK__(BlockName, Number, ##__VA_ARGS__)
@@ -656,11 +700,13 @@ inline void RecordDebugEvent(int RecordIndex, debug_event_type EventType)
 
 
 #define BEGIN_BLOCK_(Counter, FilenameInit, LineNumberInit, BlockNameInit) \
-  {debug_record *Record = GlobalDebugTable->Records[TRANSLATION_UNIT_INDEX] + Counter; \
-  Record->Filename = FilenameInit; \
-  Record->LineNumber = LineNumberInit; \
-  Record->BlockName = BlockNameInit; \
-  RecordDebugEvent(Counter, DebugEvent_BeginBlock);}
+{\
+  debug_record *Record = GlobalDebugTable->Records[TRANSLATION_UNIT_INDEX] + Counter; \
+  Record->Filename = FilenameInit;					\
+  Record->LineNumber = LineNumberInit;					\
+  Record->BlockName = BlockNameInit;					\
+  RecordDebugEvent(Counter, DebugEvent_BeginBlock);			\
+}
 
 #define END_BLOCK_(Counter) \
      RecordDebugEvent(Counter, DebugEvent_EndBlock);
@@ -687,7 +733,19 @@ struct timed_block
   }
   
 };
+#else
+
+#define TIMED_BLOCK__(BlockName, Number, ...) 
+#define TIMED_BLOCK_(BlockName, Number, ...) 
+#define TIMED_BLOCK(BlockName, ...) 
+#define TIMED_FUNCTION(...) 
+
 #endif
+
+#endif
+
+#include "handmade_debug.h"
+
 
 #define HANDMADE_H
 #endif
