@@ -555,11 +555,18 @@ internal loaded_bitmap MakeEmptyBitmap(memory_arena *Arena, int32 Width, int32 H
   return Result;
 }
 
+#if H_INTERNAL
+game_memory *DebugGlobalMemory;
+#endif
+
 #if defined __cplusplus
 extern "C"
 #endif
 GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
+#if H_INTERNAL
+  DebugGlobalMemory = Memory;;
+#endif
   Platform = Memory->PlatformAPI;
   // Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
   //Assert((&Input->Controllers[0].Terminator - &Input->Controllers[0].Buttons[0]) == (ArrayCount(Input->Controllers[0].Buttons)));
@@ -1481,7 +1488,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   
   if(DEBUGRenderGroup)
   {
-    DEBUGOverlay(Memory, Input);
+    DEBUGOverlay(Input);
     TiledRenderGroupToOutput(TranState->HighPriorityQueue, DEBUGRenderGroup, DrawBuffer);
     FinishRenderGroup(DEBUGRenderGroup);
   }
