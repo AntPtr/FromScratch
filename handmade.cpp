@@ -807,8 +807,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     TranState->Assets = AllocateGameAssets(&TranState->TranArena, Megabytes(64), TranState);
 
-    DEBUGRenderGroup = AllocateRenderGroup(TranState->Assets, &TranState->TranArena, Megabytes(16), false);
-      
     TranState->GroundBufferCount = 256;
     TranState->GroundBuffers = PushArray(&TranState->TranArena, TranState->GroundBufferCount, ground_buffer);
     
@@ -867,11 +865,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     TranState->Initialized = true;
   }
 
-  if(DEBUGRenderGroup)
-  {
-    BeginRenderGroup(DEBUGRenderGroup);
-    DEBUGReset(TranState->Assets, Buffer->Width, Buffer->Height);
-  }
+  DEBUGStart(TranState->Assets, Buffer->Width, Buffer->Height);
+ 
   
   if(Input->ExcutableReloaded)
   {
@@ -1486,12 +1481,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   CheckArena(&GameState->WorldArena);
   CheckArena(&TranState->TranArena);
   
-  if(DEBUGRenderGroup)
-  {
-    DEBUGOverlay(Input);
-    TiledRenderGroupToOutput(TranState->HighPriorityQueue, DEBUGRenderGroup, DrawBuffer);
-    FinishRenderGroup(DEBUGRenderGroup);
-  }
+  DEBUGEnd(Input, DrawBuffer);
+
 }
 
 

@@ -1,4 +1,7 @@
 #if !defined(HANDMADE_DEBUG_H)
+struct render_group;
+struct game_assets;
+
 
 #define DEBUG_SNAPSHOT_COUNT 120
 struct debug_counter_snapshot
@@ -58,6 +61,10 @@ struct debug_state
   bool32 Paused;
   bool32 Initialized;
 
+  platform_work_queue *HighPriorityQueue;
+  
+  memory_arena DebugArena;
+  
   real32 AtY;
   real32 LeftEdge;
   real32 FontScale;
@@ -65,6 +72,8 @@ struct debug_state
   real32 GlobalWidth;
   real32 GlobalHeight;
 
+  render_group *RenderGroup;
+  
   memory_arena CollateArena;
   temporary_memory CollateTemp;
 
@@ -74,18 +83,16 @@ struct debug_state
   uint32 FrameBarLaneCount;
   real32 FrameBarScale;
   debug_frame *Frames;
-
+  rectangle2 ProfileRect;
+  
   debug_record *ScopedRecord;
   
   debug_theard *FirstTheard;
   open_debug_block *FirstFreeBlock;
 };
 
-struct render_group;
-struct game_assets;
-global_variable render_group *DEBUGRenderGroup;
-internal void DEBUGReset(game_assets *Assets, uint32 Width, uint32 Height);
-internal void DEBUGOverlay(game_input *Input);
+internal void DEBUGStart(game_assets *Assets, uint32 Width, uint32 Height);
+internal void DEBUGEnd(game_input *Input, loaded_bitmap *DrawBuffer);
 internal void RefreshCollation(debug_state *DebugState);
 
 #define HANDMADE_DEBUG_H
