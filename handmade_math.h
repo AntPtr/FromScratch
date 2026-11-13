@@ -519,6 +519,16 @@ inline rectangle3 Offset(rectangle3 A, v3 Offset)
     return Result;
 }
 
+inline rectangle2 Offset(rectangle2 A, v2 Offset)
+{
+    rectangle2 Result;
+    
+    Result.Min = A.Min + Offset;
+    Result.Max = A.Max + Offset;
+
+    return Result;
+}
+
 inline bool32 IsInRectangle(rectangle3 Rectangle, v3 Test)
 {
   bool32 Result = ((Test.x >= Rectangle.Min.x) &&
@@ -630,6 +640,7 @@ inline v3 Normalize(v3 A)
   return Result;
 }
 
+
 //V4 operators
 v4 operator+(v4 A, v4 B)
 {
@@ -710,6 +721,15 @@ inline v4 ToV4(v3 XYZ, real32 W)
   return Result;
 }
 
+inline v2 V2(real32 X, real32 Y)
+{
+  v2 Result;
+  Result.x = X;
+  Result.y = Y;
+  return Result;
+}
+
+
 inline rectangle2i Intersect(rectangle2i A, rectangle2i B)
 {
   rectangle2i Result;
@@ -734,6 +754,18 @@ inline rectangle2i Union(rectangle2i A, rectangle2i B)
   return Result;
 }
 
+inline rectangle2 Union(rectangle2 A, rectangle2 B)
+{
+  rectangle2 Result;
+
+  Result.Min.x = (A.Min.x < B.Min.x) ? A.Min.x : B.Min.x;
+  Result.Min.y = (A.Min.y < B.Min.y) ? A.Min.y : B.Min.y;
+  Result.Max.x = (A.Max.x > B.Max.x) ? A.Max.x : B.Max.x;
+  Result.Max.y = (A.Max.y > B.Max.y) ? A.Max.y : B.Max.y;
+
+  return Result;
+}
+
 inline int32 GetClampedRectArea(rectangle2i A)
 {
   int32 Width = A.MaxX - A.MinX;
@@ -749,11 +781,27 @@ inline int32 GetClampedRectArea(rectangle2i A)
 
 #include <limits.h>
 
-inline rectangle2i InvertedInfinityRectangle(void)
+inline rectangle2i InvertedInfinityRectangle2i(void)
 {
   rectangle2i Result;
   Result.MinX = Result.MinY = INT_MAX;
   Result.MaxX = Result.MaxX = -INT_MAX;
+  return Result;
+}
+
+inline rectangle2 InvertedInfinityRectangle2(void)
+{
+  rectangle2 Result;
+  Result.Min.x = Result.Min.y = FLT_MAX;
+  Result.Max.x = Result.Max.y = -FLT_MAX;
+  return Result;
+}
+
+
+inline v2 Arm2(real32 Angle)
+{
+  v2 Result = v2{Cos(Angle), Sin(Angle)};
+
   return Result;
 }
 

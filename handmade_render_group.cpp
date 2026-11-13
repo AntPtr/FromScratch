@@ -207,6 +207,26 @@ entity_basis_result GetRenderEntityBasisP(render_transform *Transform, v3 Origin
   return Result;
 }
 
+struct used_bitmap_dim
+{
+  v2 Size;
+  v2 Align;
+  v3 P;
+  
+  entity_basis_result Basis;
+};
+
+inline used_bitmap_dim GetBitmapDim(render_group *Group, loaded_bitmap *Bitmap, v3 Offset, real32 Height)
+{
+  used_bitmap_dim Dim;
+  Dim.Size = v2{Height*Bitmap->WidthOverHeight, Height};
+  Dim.Align = Hadamard(Bitmap->AlignPercentage, Dim.Size);
+  Dim.P = Offset - V3(Dim.Align, 0);
+  
+  Dim.Basis =  GetRenderEntityBasisP(&Group->Transform, Dim.P);
+  return Dim;
+}
+
 inline void PushBitmap(render_group *Group, loaded_bitmap *Bitmap, v3 Offset, real32 Height, v4 Color = v4{1, 1, 1, 1})
 {
   v2 Size = v2{Height*Bitmap->WidthOverHeight, Height};
@@ -545,7 +565,7 @@ internal void DrawRectangleQuickly(loaded_bitmap *Buffer, v2 Origin, v2 XAxis, v
   //Premuliply color
   Color.rgb *= Color.a;
 
-  rectangle2i FillRect = InvertedInfinityRectangle();
+  rectangle2i FillRect = InvertedInfinityRectangle2i();
   
   for(uint32 Index = 0; Index < ArrayCount(P); ++Index)
   {

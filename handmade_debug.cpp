@@ -44,6 +44,8 @@ internal void DEBUGStart(game_assets *Assets, uint32 Width, uint32 Height)
     WeightVector.E[Tag_FontType] = 1.0f;
     DebugState->FontID = BestMatchFont(Assets, Asset_Fonts, &MatchVector, &WeightVector);
     DebugState->FontScale = 1.0f;
+    DebugState->DebugFont = PushFont(DebugState->RenderGroup, DebugState->FontID);
+    DebugState->DebugFontInfo = GetFontInfo(DebugState->RenderGroup->Assets, DebugState->FontID);
     hha_font *Info = GetFontInfo(Assets, DebugState->FontID);
     DebugState->AtY = 0.5f*Height - DebugState->FontScale*GetBaseLineY(Info);
     DebugState->LeftEdge = -0.5f*Width; 
@@ -243,7 +245,79 @@ internal void RefreshCollation(debug_state *DebugState)
   CollateDebugRecord(DebugState, GlobalDebugTable->CurrentEventArrayIndex);
 }
 
+internal rectangle2 DEBUGTextOp(debug_text_op Op, debug_state *DebugState, v2 P, char *String, v4 Color = v4{1.0, 1.0, 1.0, 1.0})
+{
+  rectangle2 Result = InvertedInfinityRectangle2();
+  if(DebugState && DebugState->DebugFont)
+  {
+    render_group *RenderGroup = DebugState->RenderGroup;
+    loaded_font *Font = DebugState->DebugFont;
+    hha_font *Info = DebugState->DebugFontInfo;
+  
+    real32 AtX = P.x;
+    real32 AtY = P.y;
+    uint32 PrevCodePoint = 0;
+    if(String[0] == '/')
+    {
+      uint32 CodePoint = 0x706B;
+	
+      real32 AdvanceX = GetHorizonatalAdvanceForPair(Info, Font, PrevCodePoint, CodePoint);
+      AtX += AdvanceX*DebugState->FontScale;
+      bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
+      hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
+	//CharDim = FontScale*(real32)InfoBitmap->Dim[0];
+      PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, DebugState->FontScale*(real32)InfoBitmap->Dim[1], Color);  
+      PrevCodePoint = CodePoint;
+    }
+    else
+    {
+      for(char *At = String; *At; ++At)
+      {
+	uint32 CodePoint = *At;
+	
+	//real32 CharDim = 10.0f;
+	real32 AdvanceX = GetHorizonatalAdvanceForPair(Info, Font, PrevCodePoint, CodePoint);
+	AtX += AdvanceX*DebugState->FontScale;
+	if(CodePoint !=  ' ')
+        {
+	  bitmap_id BitmapID = GetBitmapForGlyph(RenderGroup->Assets, Info, Font, CodePoint);
+	  hha_bitmap *InfoBitmap = GetBitmapInfo(RenderGroup->Assets, BitmapID);
+	  real32 BitmapScale =  DebugState->FontScale*(real32)InfoBitmap->Dim[1];
+	  v3 BitmapOffset = v3{AtX, AtY, 0};
+	  if(Op == DEBUGTextOp_DrawText)
+	  {  
+	    PushBitmap(RenderGroup, BitmapID, v3{AtX, AtY, 0}, DebugState->FontScale*(real32)InfoBitmap->Dim[1], Color);
+	  }
+	  else
+	  {
+	    Assert(Op == DEBUGTextOp_SizeText);
+	    loaded_bitmap *Bitmap = GetBitmap(RenderGroup->Assets, BitmapID, RenderGroup->GenerationID);
+	    if(Bitmap)
+	    {
+	      used_bitmap_dim Dim = GetBitmapDim(RenderGroup, Bitmap, BitmapOffset, BitmapScale);
+	      rectangle2 GlyphDim = RectMinDim(Dim.P.xy, Dim.Size);
+	      Result = Union(Result, GlyphDim);
+	    }
+	  }
+	}
+	PrevCodePoint = CodePoint;
+      }
+    }
+  }
+  return Result;
+}
+
 internal void DEBUGTextOutAt(v2 P, char *String, v4 Color = v4{1.0, 1.0, 1.0, 1.0})
+{
+  debug_state *DebugState = GetDebugState();
+  if(DebugState)
+  {
+    DEBUGTextOp(DEBUGTextOp_DrawText, DebugState, P, String, Color);
+  }
+}
+
+
+internal void DEBUGTextOutAt2(v2 P, char *String, v4 Color = v4{1.0, 1.0, 1.0, 1.0})
 {
   debug_state *DebugState = GetDebugState();
   if(DebugState)
@@ -311,6 +385,13 @@ internal void DEBUGTextLine(char *String, v4 Color = v4{1.0, 1.0, 1.0, 1.0})
   }
 }
 
+internal rectangle2 DEBUGTextSize(debug_state *DebugState, char *String)
+{
+  rectangle2 Result = DEBUGTextOp(DEBUGTextOp_SizeText, DebugState, V2(0, 0), String);
+
+  return Result;
+}
+
 struct debug_statistics
 {
   real64 Min;
@@ -364,6 +445,51 @@ bool32 MyStrCmp(const char *A, const char *B)
     return (*A == *B);
 }
 
+internal void DrawDebugMainMenu(debug_state *DebugState, render_group *RenderGroup, v2 MouseP)
+{
+  char *MenuItems[] =
+    {
+      "Toggle Profile Graph",
+      "Pause Debug Collation",
+      "Toggle Framerate Counter",
+      "Mark Loop Point",
+      "Toggle Entity Bounds",
+      "Toggle World Chunk Bounds"
+    };
+
+  real32 MenuRadius = 200.0f;
+  real32 AngleSteps = Tau32 / (real32)ArrayCount(MenuItems);
+  real32 BestDistanceSq = Real32Maximum;
+  uint32 NewHotMenuIndex = ArrayCount(MenuItems);
+  for(uint32 ItemIndex  = 0; ItemIndex < ArrayCount(MenuItems); ++ItemIndex)
+  {
+    char *Item = MenuItems[ItemIndex];
+
+    v4 Color = v4{1.0f, 1.0f, 1.0f, 1.0f};
+
+    if(ItemIndex == DebugState->HotMenuIndex)
+    {
+      Color = v4{1.0f, 1.0f, 0, 1.0f};
+    }  
+    real32 Angle = AngleSteps*(real32)ItemIndex;
+    v2 TextP = DebugState->MenuP - MenuRadius*Arm2(Angle);
+    rectangle2 TextBounds = DEBUGTextSize(DebugState, Item);
+
+    real32 ThisDistanceSq = LengthSq(TextP - MouseP);
+    if(BestDistanceSq > ThisDistanceSq)
+    {
+      BestDistanceSq = ThisDistanceSq;
+      NewHotMenuIndex = ItemIndex;
+    }
+    //PushRect(RenderGroup, Offset(TextBounds, TextP), 0.0f, v4{0.0f, 0.0f, 0.4f, 1.0f});
+    //PushRect(RenderGroup, RectCenHalfDim(TextP, v2{2.0f, 2.0f}), 0.0f, v4{1.0f, 1.0f, 1.0f, 1.0f});
+    
+    DEBUGTextOutAt(TextP - 0.5f*GetDim(TextBounds), Item, Color);
+  }
+
+  DebugState->HotMenuIndex = NewHotMenuIndex;
+}
+
 internal void DEBUGEnd(game_input *Input, loaded_bitmap *DrawBuffer)
 {
 #if H_INTERNAL
@@ -374,17 +500,39 @@ internal void DEBUGEnd(game_input *Input, loaded_bitmap *DrawBuffer)
     render_group *RenderGroup = DebugState->RenderGroup;
     v2 MouseP = v2{Input->MouseX,Input->MouseY};
     debug_record *HotRecord = 0;
-    if(WasPressed(Input->MouseButtons[PlatformMouseButton_Rigth]))
-    {
-      DebugState->Paused = !DebugState->Paused;
-    }
+
     DEBUGTextLine("DEBUG CYCLE COUNT:\n");
+    
+    if(Input->MouseButtons[PlatformMouseButton_Rigth].EndedDown)
+    {
+      if(Input->MouseButtons[PlatformMouseButton_Rigth].HalfTransitionCount)
+      {
+	DebugState->MenuP = MouseP;
+      }
+      DrawDebugMainMenu(DebugState, RenderGroup, MouseP);
+    }
+    else if(Input->MouseButtons[PlatformMouseButton_Rigth].HalfTransitionCount)
+    {
+      DrawDebugMainMenu(DebugState, RenderGroup, MouseP);
+      switch(DebugState->HotMenuIndex)
+      {
+        case 0:
+	{
+	  DebugState->ProfileOn = !DebugState->ProfileOn;
+	}
+        case 1:
+	{
+	  DebugState->Paused = !DebugState->Paused;
+	}
+      }
+    }
     //DEBUGTextLine("/", v4{0.4f, 0.0f, 0.0f, 1.0f});
     //DEBUGTextLine("Ciao Roxie", v4{0.024f, 0.4f, 0.169f, 1.0f});
-    loaded_font *Font = PushFont(RenderGroup, DebugState->FontID);
+    loaded_font *Font = DebugState->DebugFont;
+    hha_font *Info =  DebugState->DebugFontInfo;
+
     if(Font)
     {
-      hha_font *Info =  GetFontInfo(RenderGroup->Assets, DebugState->FontID);
       
 #if 0
       for(uint32 CounterIndex = 0; CounterIndex < DebugState->CounterCount; ++CounterIndex)
@@ -441,102 +589,103 @@ internal void DEBUGEnd(game_input *Input, loaded_bitmap *DrawBuffer)
 	}
       }
 #endif
-      
-      if(DebugState->FrameCount)
+      if(DebugState->ProfileOn)
       {
-	char TextBuffer[256];
-	_snprintf_s(TextBuffer, sizeof(TextBuffer), "Last Frame Time: %0.02fms", DebugState->Frames[DebugState->FrameCount - 1].WallSecondsElapsed*1000);
+	if(DebugState->FrameCount)
+	{
+	  char TextBuffer[256];
+	  _snprintf_s(TextBuffer, sizeof(TextBuffer), "Last Frame Time: %0.02fms", DebugState->Frames[DebugState->FrameCount - 1].WallSecondsElapsed*1000);
 	  DEBUGTextLine(TextBuffer);
-      }
+	}
 
-      Orthographic(DebugState->RenderGroup, (int32)DebugState->GlobalWidth, (int32)DebugState->GlobalHeight, 1.0f);
+	Orthographic(DebugState->RenderGroup, (int32)DebugState->GlobalWidth, (int32)DebugState->GlobalHeight, 1.0f);
 
-      DebugState->ProfileRect = RectMinMax(v2{50, 50}, v2{200, 200});
+	DebugState->ProfileRect = RectMinMax(v2{50, 50}, v2{200, 200});
 
-      real32 BarSpacing = 4.0f;
-      real32 LaneHeight = 0.0f;
-      uint32 LaneCount = DebugState->FrameBarLaneCount;
+	real32 BarSpacing = 4.0f;
+	real32 LaneHeight = 0.0f;
+	uint32 LaneCount = DebugState->FrameBarLaneCount;
 
-      uint32 MaxFrame = DebugState->FrameCount;
-      if(MaxFrame > 10)
-      {
-	MaxFrame = 10;
-      }
+	uint32 MaxFrame = DebugState->FrameCount;
+	if(MaxFrame > 10)
+	{
+	  MaxFrame = 10;
+	}
 
-      if((LaneCount > 0) && (MaxFrame > 0))
-      {
-	LaneHeight = ((GetDim(DebugState->ProfileRect).y / (real32)MaxFrame) - BarSpacing) / LaneCount;
-      }
+	if((LaneCount > 0) && (MaxFrame > 0))
+	{
+	  LaneHeight = ((GetDim(DebugState->ProfileRect).y / (real32)MaxFrame) - BarSpacing) / LaneCount;
+	}
       
-      real32 BarHeight = LaneHeight*LaneCount;
-      real32 BarPlusSpacing = BarHeight + BarSpacing;
-      real32 ChartLeft = DebugState->ProfileRect.Min.x; 
-      real32 ChartHeight = BarPlusSpacing*MaxFrame;
-      real32 ChartWidth = GetDim(DebugState->ProfileRect).x;
-      real32 ChartTop = DebugState->ProfileRect.Max.y;
-      real32 Scale = ChartWidth*DebugState->FrameBarScale;
-      v3 Colors[] =
-      {
-	{1, 0, 0},
-	{0, 1, 0},
-	{0, 0, 1},
-	{1, 1, 1},
-	{0, 1, 1},
-	{1, 0, 1},
-	{1, 0.5f, 0},
-	{0.5f, 0, 1},
-	{0.5f, 1, 0},
-	{0, 1, 0.5f},
-	{0.5f, 0, 0.5f},
-	{0, 0.5f, 1},
-	{0, 0.5f, 1},
-      };
+	real32 BarHeight = LaneHeight*LaneCount;
+	real32 BarPlusSpacing = BarHeight + BarSpacing;
+	real32 ChartLeft = DebugState->ProfileRect.Min.x; 
+	real32 ChartHeight = BarPlusSpacing*MaxFrame;
+	real32 ChartWidth = GetDim(DebugState->ProfileRect).x;
+	real32 ChartTop = DebugState->ProfileRect.Max.y;
+	real32 Scale = ChartWidth*DebugState->FrameBarScale;
+	v3 Colors[] =
+	  {
+	    {1, 0, 0},
+	    {0, 1, 0},
+	    {0, 0, 1},
+	    {1, 1, 1},
+	    {0, 1, 1},
+	    {1, 0, 1},
+	    {1, 0.5f, 0},
+	    {0.5f, 0, 1},
+	    {0.5f, 1, 0},
+	    {0, 1, 0.5f},
+	    {0.5f, 0, 0.5f},
+	    {0, 0.5f, 1},
+	    {0, 0.5f, 1},
+	  };
 
-      for(uint32 FrameIndex = 0; FrameIndex < MaxFrame; ++FrameIndex)
-      {
-	debug_frame *Frame = DebugState->Frames + DebugState->FrameCount - (FrameIndex + 1);
-	real32 StackX = ChartLeft;
-	real32 StackY = ChartTop - BarPlusSpacing*(real32)FrameIndex;
+	for(uint32 FrameIndex = 0; FrameIndex < MaxFrame; ++FrameIndex)
+	{
+	  debug_frame *Frame = DebugState->Frames + DebugState->FrameCount - (FrameIndex + 1);
+	  real32 StackX = ChartLeft;
+	  real32 StackY = ChartTop - BarPlusSpacing*(real32)FrameIndex;
 	
 
-	for(uint32 RegionIndex = 0; RegionIndex < Frame->RegionCount; ++RegionIndex)
-	{
-	  debug_frame_region *Region = Frame->Regions + RegionIndex;
-	  debug_record *Record = Region->Record;
-
-	  v3 Color = Colors[Region->ColorIndex%ArrayCount(Colors)];
-	  real32 ThisMinX = StackX + Scale*Region->MinT;
-	  real32 ThisMaxX = StackX + Scale*Region->MaxT;
-	  	  
-	  rectangle2 RegionRect = RectMinMax(v2{ThisMinX, StackY - LaneHeight*(Region->LaneIndex + 1)},
-					     v2{ThisMaxX, StackY - LaneHeight*Region->LaneIndex});
-	  
-	  PushRect(RenderGroup, RegionRect, 0.0f, v4{Color, 1.0f});
-
-	  
-	  
-	  if(IsInRectangle(RegionRect, MouseP))
+	  for(uint32 RegionIndex = 0; RegionIndex < Frame->RegionCount; ++RegionIndex)
 	  {
-	    char TextBuffer[256];
-	    
-	    _snprintf_s(TextBuffer,
-			sizeof(TextBuffer),
-			"%s: %10ucy [%s(%d)]",
-			Record->BlockName,
-			(uint32)Region->CycleCount,
-			Record->Filename,
-			Record->LineNumber);
-	    
-	    DEBUGTextOutAt(MouseP + v2{0.0f, 10.0f}, TextBuffer);
+	    debug_frame_region *Region = Frame->Regions + RegionIndex;
+	    debug_record *Record = Region->Record;
 
-	    HotRecord = Record;
-	  }   
+	    v3 Color = Colors[Region->ColorIndex%ArrayCount(Colors)];
+	    real32 ThisMinX = StackX + Scale*Region->MinT;
+	    real32 ThisMaxX = StackX + Scale*Region->MaxT;
+	  	  
+	    rectangle2 RegionRect = RectMinMax(v2{ThisMinX, StackY - LaneHeight*(Region->LaneIndex + 1)},
+					       v2{ThisMaxX, StackY - LaneHeight*Region->LaneIndex});
+	    
+	    PushRect(RenderGroup, RegionRect, 0.0f, v4{Color, 1.0f});
+
+	  
+	  
+	    if(IsInRectangle(RegionRect, MouseP))
+	    {
+	      char TextBuffer[256];
+	    
+	      _snprintf_s(TextBuffer,
+			  sizeof(TextBuffer),
+			  "%s: %10ucy [%s(%d)]",
+			  Record->BlockName,
+			  (uint32)Region->CycleCount,
+			  Record->Filename,
+			  Record->LineNumber);
+	    
+	      DEBUGTextOutAt(MouseP + v2{0.0f, 10.0f}, TextBuffer);
+	      
+	      HotRecord = Record;
+	    }   
+	  }
 	}
-      }
       
-      //PushRect(RenderGroup, v3{ChartLeft + 0.5f*ChartWidth, ChartMinY + ChartHeight, 0.0f}, v2{ChartWidth, 1.0f}, v4{1.0f, 1.0f, 1.0f, 1.0f});
+      }     
     }
-
+      
     if(WasPressed(Input->MouseButtons[PlatformMouseButton_Left]))
     {
       if(HotRecord)

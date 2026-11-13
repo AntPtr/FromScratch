@@ -1,6 +1,8 @@
 #if !defined(HANDMADE_DEBUG_H)
 struct render_group;
 struct game_assets;
+struct loaded_font;
+struct hha_font;
 
 
 #define DEBUG_SNAPSHOT_COUNT 120
@@ -56,6 +58,12 @@ struct debug_theard
   debug_theard *Next;
 };
 
+enum debug_text_op
+{
+  DEBUGTextOp_DrawText,
+  DEBUGTextOp_SizeText,
+};
+
 struct debug_state
 {
   bool32 Paused;
@@ -71,7 +79,13 @@ struct debug_state
   font_id FontID;
   real32 GlobalWidth;
   real32 GlobalHeight;
-
+  loaded_font *DebugFont;
+  hha_font *DebugFontInfo;
+  
+  bool32 ProfileOn;
+  uint32 HotMenuIndex;
+  v2 MenuP;
+  
   render_group *RenderGroup;
   
   memory_arena CollateArena;
